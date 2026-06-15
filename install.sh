@@ -31,23 +31,35 @@ fi
 
 echo -e "OS Detected: ${YELLOW}$OS_NAME${PLAIN}"
 
-# 1. Install dependencies
-echo -e "\n${YELLOW}Step 1: Installing dependencies (vnstat, jq, bc, curl)...${PLAIN}"
-case "$OS_NAME" in
-    ubuntu|debian)
-        apt-get update
-        apt-get install -y vnstat jq bc curl
-        ;;
-    centos|rhel|rocky|almalinux)
-        # Enable EPEL first for vnstat
-        yum install -y epel-release
-        yum install -y vnstat jq bc curl
-        ;;
-    *)
-        echo -e "${RED}Unsupported OS. Please manually install: vnstat, jq, bc, curl${PLAIN}"
-        exit 1
-        ;;
-esac
+# 1. Install dependencies (only missing ones)
+echo -e "\n${YELLOW}Step 1: Checking and installing dependencies (vnstat, jq, bc, curl)...${PLAIN}"
+
+MISSING_PKGS=""
+for cmd in vnstat jq bc curl; do
+    if ! command -v "$cmd" &>/dev/null; then
+        MISSING_PKGS="$MISSING_PKGS $cmd"
+    fi
+done
+
+if [ -z "$MISSING_PKGS" ]; then
+    echo -e "${GREEN}All required dependencies are already installed.${PLAIN}"
+else
+    echo -e "Missing packages:${YELLOW}${MISSING_PKGS}${PLAIN}"
+    case "$OS_NAME" in
+        ubuntu|debian)
+            apt-get update
+            apt-get install -y $MISSING_PKGS
+            ;;
+        centos|rhel|rocky|almalinux)
+            yum install -y epel-release
+            yum install -y $MISSING_PKGS
+            ;;
+        *)
+            echo -e "${RED}Unsupported OS. Please manually install: vnstat, jq, bc, curl${PLAIN}"
+            exit 1
+            ;;
+    esac
+fi
 
 # 2. Check for existing configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -131,7 +143,7 @@ if [ "$REBUILD_CONFIG" = "true" ]; then
         # Try to read MonthRotate directly from /etc/vnstat.conf
         VNSTAT_CONF="/etc/vnstat.conf"
         if [ -f "$VNSTAT_CONF" ]; then
-            VNSTAT_RESET_DAY=$(grep -E "^MonthRotate" "$VNSTAT_CONF" | awk '{print $2}')
+            VNSTAT_RESET_DAY=$(grep -E "^MonthRotate" "$VNSTAT_CONF" | head -n 1 | awk '{print $2}')
             DEFAULT_RESET_DAY=${VNSTAT_RESET_DAY:-$DEFAULT_RESET_DAY}
         fi
     fi
@@ -238,7 +250,9 @@ EOF
     VNSTAT_CONF="/etc/vnstat.conf"
     if [ -f "$VNSTAT_CONF" ]; then
         # Modify MonthRotate line in vnstat.conf
-        sed -i 's/;*MonthRotate.*/MonthRotate '$RESET_DAY'/' "$VNSTAT_CONF"
+        # Remove all existing MonthRotate lines (commented or not), then append the new one
+        sed -i '/MonthRotate/d' "$VNSTAT_CONF"
+        echo "MonthRotate $RESET_DAY" >> "$VNSTAT_CONF"
         # Restart vnstat service
         systemctl restart vnstat
         systemctl enable vnstat
@@ -247,7 +261,7 @@ else
     # Config is kept, we parse values to display the summary
     # Load config variables to print summary
     source "$CONFIG_FILE"
-    RESET_DAY=$(grep -E "^MonthRotate" /etc/vnstat.conf | awk '{print $2}')
+    RESET_DAY=$(grep -E "^MonthRotate" /etc/vnstat.conf | head -n 1 | awk '{print $2}')
     RESET_DAY=${RESET_DAY:-1}
     TG_TOKEN=$TELEGRAM_BOT_TOKEN
     TG_CHAT=$TELEGRAM_CHAT_ID
@@ -291,7 +305,7 @@ if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
     echo -e "\n📢 ${GREEN}请立刻检查你的 Telegram 客户端以确认已经收到测试消息！${PLAIN}"
     echo -e "💡 并温馨提示：如果你没有在手机上收到任何消息，说明很有可能你刚才输入的"
     echo -e "   ${RED}Telegram Bot Token${PLAIN} 或者是 ${RED}Chat ID${PLAIN} 填写有误，请查验后重新运行安装脚本进行修改。"
-else
-    echo -e "\n${YELLOW}You can manually test it later via:${PLAIN}"
-    echo -e "${YELLOW}${MONITOR_SCRIPT} test${PLAIN}"
 fi
+
+echo -e "\n💡 ${YELLOW}任何时候都可以手动触发一次测试推送：${PLAIN}"
+echo -e "   ${GREEN}${MONITOR_SCRIPT} test${PLAIN}"
