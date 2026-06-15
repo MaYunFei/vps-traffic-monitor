@@ -46,21 +46,6 @@ send_tg_notification() {
     fi
 }
 
-# Handle manual test execution
-if [ "$1" = "test" ] || [ "$1" = "--test" ]; then
-    echo "Sending test Telegram notification..."
-    TEST_MESSAGE="🔔 *VPS 流量监控测试通知* ($VPS_NAME)
-━━━━━━━━━━━━━━━━━━
-• *网卡名称*: $INTERFACE (测试)
-• *当前状态*: 链路测试成功 ✅
-• *测试时间*: $(date '+%Y-%m-%d %H:%M:%S')
-
-_这是一条手动触发的测试通知，代表你的 Bot Token 与 Chat ID 配置正确！_"
-    send_tg_notification "$TEST_MESSAGE"
-    echo "Test message sent. Please check your Telegram."
-    exit 0
-fi
-
 # Fetch vnstat monthly data (JSON mode)
 VNSTAT_JSON=$(vnstat --json -i "$INTERFACE" 2>/dev/null)
 if [ -z "$VNSTAT_JSON" ]; then
@@ -72,17 +57,51 @@ fi
 RX=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].rx' 2>/dev/null)
 TX=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].tx' 2>/dev/null)
 
+# Fallback values if stats are not ready yet
 if [ "$RX" = "null" ] || [ -z "$RX" ]; then
-    # Maybe vnstat has no monthly stats accumulated yet.
-    # In older vnstat versions or fresh installs, month[0] might not contain data. Fall back to total or exit.
-    echo "Warning: vnstat monthly stats not ready yet."
-    exit 0
+    RX=0
+fi
+if [ "$TX" = "null" ] || [ -z "$TX" ]; then
+    TX=0
 fi
 
 TOTAL_BYTES=$((RX + TX))
 # Calculate usage (Floating point emulation using bc)
 USED_GB=$(echo "scale=2; $TOTAL_BYTES / 1073741824" | bc)
 USED_PERCENT=$(echo "scale=0; ($TOTAL_BYTES * 100) / ($LIMIT_GB * 1073741824)" | bc)
+
+# Format values for readable output in TG
+RX_GB=$(echo "scale=2; $RX / 1073741824" | bc)
+TX_GB=$(echo "scale=2; $TX / 1073741824" | bc)
+
+# Handle manual test execution
+if [ "$1" = "test" ] || [ "$1" = "--test" ]; then
+    echo "Sending test Telegram notification with real statistics..."
+    # Read Reset Day from vnstat.conf if available
+    RESET_DAY=$(grep -E "^MonthRotate" /etc/vnstat.conf 2>/dev/null | awk '{print $2}')
+    RESET_DAY=${RESET_DAY:-1}
+
+    TEST_MESSAGE="🔔 *VPS 流量监控测试通知* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *监控网卡*: $INTERFACE
+• *下载流量 (RX)*: ${RX_GB} GB
+• *上传流量 (TX)*: ${TX_GB} GB
+• *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
+• *使用空间*: *${USED_PERCENT}%*
+• *计算周期*: 每月 ${RESET_DAY} 号重置
+
+💡 _如果你没有在 Telegram 收到此消息，请仔细检查 config.env 里的 Bot Token 或 Chat ID 是否配置有误。_"
+    send_tg_notification "$TEST_MESSAGE"
+    echo "Test message sent. Please check your Telegram."
+    exit 0
+fi
+
+if [ "$RX" = "0" ] && [ "$TOTAL_BYTES" = "0" ]; then
+    # Maybe vnstat has no monthly stats accumulated yet.
+    # In older vnstat versions or fresh installs, month[0] might not contain data. Fall back to total or exit.
+    echo "Warning: vnstat monthly stats not ready yet."
+    exit 0
+fi
 
 # Multi-stage thresholds implementation: 80% -> 90% -> 95% -> 100%
 CURRENT_STAGE=0

@@ -105,62 +105,104 @@ chmod +x "$MONITOR_SCRIPT"
 if [ "$REBUILD_CONFIG" = "true" ]; then
     echo -e "\n${YELLOW}Step 3: Setting up configurations interactively...${PLAIN}"
 
+    # Load existing values as defaults if configuration exists
+    DEFAULT_VPS_NAME=$(hostname)
+    DEFAULT_LIMIT_GB=1000
+    DEFAULT_ALERT_THRESHOLD=80
+    DEFAULT_RESET_DAY=1
+    DEFAULT_DAILY="y"
+    DEFAULT_DAILY_HOUR=21
+    DEFAULT_TG_TOKEN=""
+    DEFAULT_TG_CHAT=""
+
+    if [ -f "$CONFIG_FILE" ]; then
+        # Safely source config file
+        source "$CONFIG_FILE" 2>/dev/null
+        DEFAULT_VPS_NAME=${VPS_NAME:-$DEFAULT_VPS_NAME}
+        DEFAULT_LIMIT_GB=${LIMIT_GB:-$DEFAULT_LIMIT_GB}
+        DEFAULT_ALERT_THRESHOLD=${ALERT_THRESHOLD:-$DEFAULT_ALERT_THRESHOLD}
+        DEFAULT_DAILY_HOUR=${DAILY_REPORT_HOUR:-$DEFAULT_DAILY_HOUR}
+        DEFAULT_TG_TOKEN=$TELEGRAM_BOT_TOKEN
+        DEFAULT_TG_CHAT=$TELEGRAM_CHAT_ID
+        if [ "$DAILY_REPORT" = "false" ]; then
+            DEFAULT_DAILY="n"
+        fi
+
+        # Try to read MonthRotate directly from /etc/vnstat.conf
+        VNSTAT_CONF="/etc/vnstat.conf"
+        if [ -f "$VNSTAT_CONF" ]; then
+            VNSTAT_RESET_DAY=$(grep -E "^MonthRotate" "$VNSTAT_CONF" | awk '{print $2}')
+            DEFAULT_RESET_DAY=${VNSTAT_RESET_DAY:-$DEFAULT_RESET_DAY}
+        fi
+    fi
+
     # Custom Hostname
     echo -e "\n${BLUE}[1/5] 主机识别名称 (VPS_NAME)${PLAIN}"
     echo -e "说明: 用于区分多台服务器，将在 Telegram 告警卡片标题中显示。"
-    read -p "请输入此 VPS 的展示名称 [默认: $(hostname)]: " VPS_NAME
-    VPS_NAME=${VPS_NAME:-$(hostname)}
+    read -p "请输入此 VPS 的展示名称 [默认: $DEFAULT_VPS_NAME]: " VPS_NAME
+    VPS_NAME=${VPS_NAME:-$DEFAULT_VPS_NAME}
 
     # Limit GB
     echo -e "\n${BLUE}[2/5] 月度流量限制总额 (LIMIT_GB)${PLAIN}"
-    echo -e "说明: VPS 商机提供的月度总流量限制数 (单位: GB)。"
-    read -p "请输入限制额度 [默认: 1000]: " LIMIT_GB
-    LIMIT_GB=${LIMIT_GB:-1000}
+    echo -e "说明: VPS 商家提供的月度总流量限制数 (单位: GB)。"
+    read -p "请输入限制额度 [默认: $DEFAULT_LIMIT_GB]: " LIMIT_GB
+    LIMIT_GB=${LIMIT_GB:-$DEFAULT_LIMIT_GB}
     if ! [[ "$LIMIT_GB" =~ ^[0-9]+$ ]]; then
-        LIMIT_GB=1000
+        LIMIT_GB=$DEFAULT_LIMIT_GB
     fi
 
     # Alert Threshold
     echo -e "\n${BLUE}[3/5] 起始报警阈值比例 (ALERT_THRESHOLD)${PLAIN}"
     echo -e "说明: 流量消耗达到此百分比时开始报警，超量后还会阶梯式在 90%、95%、100% 时各告警一次。"
-    read -p "请输入起始警报比例 (0-100) [默认: 80]: " ALERT_THRESHOLD
-    ALERT_THRESHOLD=${ALERT_THRESHOLD:-80}
+    read -p "请输入起始警报比例 (0-100) [默认: $DEFAULT_ALERT_THRESHOLD]: " ALERT_THRESHOLD
+    ALERT_THRESHOLD=${ALERT_THRESHOLD:-$DEFAULT_ALERT_THRESHOLD}
     if ! [[ "$ALERT_THRESHOLD" =~ ^[0-9]+$ ]] || [ "$ALERT_THRESHOLD" -lt 0 ] || [ "$ALERT_THRESHOLD" -gt 100 ]; then
-        ALERT_THRESHOLD=80
+        ALERT_THRESHOLD=$DEFAULT_ALERT_THRESHOLD
     fi
 
     # Reset Day
     echo -e "\n${BLUE}[4/5] 账单重置日期 (RESET_DAY)${PLAIN}"
     echo -e "说明: 你的 VPS 账单流量重置日(如 ZgoCloud 为每月 22 号)。"
     echo -e "⚠️  受 vnstat 底层月份天数兼容设计限制，只能设置为 1-28 号。"
-    read -p "请输入每月重置日期 (1-28) [默认: 22]: " RESET_DAY
-    RESET_DAY=${RESET_DAY:-22}
+    read -p "请输入每月重置日期 (1-28) [默认: $DEFAULT_RESET_DAY]: " RESET_DAY
+    RESET_DAY=${RESET_DAY:-$DEFAULT_RESET_DAY}
     if ! [[ "$RESET_DAY" =~ ^[0-9]+$ ]] || [ "$RESET_DAY" -lt 1 ] || [ "$RESET_DAY" -gt 28 ]; then
-        echo -e "${RED}输入无效，默认回退到 22 号。${PLAIN}"
-        RESET_DAY=22
+        echo -e "${RED}输入无效，默认回退到 $DEFAULT_RESET_DAY 号。${PLAIN}"
+        RESET_DAY=$DEFAULT_RESET_DAY
     fi
 
     # Daily Report Setting
     echo -e "\n${BLUE}[5/5] 每日例行流量总结报告 (DAILY_REPORT)${PLAIN}"
     echo -e "说明: 每天定时向你汇报当前已用/剩余流量总结。"
-    read -p "是否开启运行报告? (y/n) [默认: y]: " WANT_DAILY
-    WANT_DAILY=${WANT_DAILY:-y}
+    read -p "是否开启运行报告? (y/n) [默认: $DEFAULT_DAILY]: " WANT_DAILY
+    WANT_DAILY=${WANT_DAILY:-$DEFAULT_DAILY}
     if [[ "$WANT_DAILY" =~ ^[Nn]$ ]]; then
         DAILY_REPORT=false
         DAILY_REPORT_HOUR=9
     else
         DAILY_REPORT=true
-        read -p "   请输入每天定时推送的时间 (整点小时 0-23) [默认: 21 (晚上 9 点)]: " DAILY_HOUR
-        DAILY_REPORT_HOUR=${DAILY_HOUR:-21}
+        read -p "   请输入每天定时推送的时间 (整点小时 0-23) [默认: $DEFAULT_DAILY_HOUR]: " DAILY_HOUR
+        DAILY_REPORT_HOUR=${DAILY_HOUR:-$DEFAULT_DAILY_HOUR}
         if ! [[ "$DAILY_REPORT_HOUR" =~ ^[0-9]+$ ]] || [ "$DAILY_REPORT_HOUR" -lt 0 ] || [ "$DAILY_REPORT_HOUR" -gt 23 ]; then
-            DAILY_REPORT_HOUR=21
+            DAILY_REPORT_HOUR=$DEFAULT_DAILY_HOUR
         fi
     fi
 
     # Telegram Credentials
     echo -e "\n${YELLOW}Please specify Telegram Bot configurations:${PLAIN}"
-    read -p "Telegram Bot Token: " TG_TOKEN
-    read -p "Telegram Chat ID: " TG_CHAT
+    if [ -n "$DEFAULT_TG_TOKEN" ]; then
+        read -p "Telegram Bot Token [默认: $DEFAULT_TG_TOKEN]: " TG_TOKEN
+        TG_TOKEN=${TG_TOKEN:-$DEFAULT_TG_TOKEN}
+    else
+        read -p "Telegram Bot Token: " TG_TOKEN
+    fi
+
+    if [ -n "$DEFAULT_TG_CHAT" ]; then
+        read -p "Telegram Chat ID [默认: $DEFAULT_TG_CHAT]: " TG_CHAT
+        TG_CHAT=${TG_CHAT:-$DEFAULT_TG_CHAT}
+    else
+        read -p "Telegram Chat ID: " TG_CHAT
+    fi
 
     # Print a nice summary during configuration writing
     cat <<EOF > "$CONFIG_FILE"
@@ -244,8 +286,11 @@ echo -e "==========================================="
 
 # Automatically trigger channel test if credentials are supplied
 if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
-    echo -e "\n${YELLOW}Triggering Telegram notification test...${PLAIN}"
+    echo -e "\n${YELLOW}正在向你的 Telegram 发送真实数据测试消息...${PLAIN}"
     /bin/bash "$MONITOR_SCRIPT" test
+    echo -e "\n📢 ${GREEN}请立刻检查你的 Telegram 客户端以确认已经收到测试消息！${PLAIN}"
+    echo -e "💡 并温馨提示：如果你没有在手机上收到任何消息，说明很有可能你刚才输入的"
+    echo -e "   ${RED}Telegram Bot Token${PLAIN} 或者是 ${RED}Chat ID${PLAIN} 填写有误，请查验后重新运行安装脚本进行修改。"
 else
     echo -e "\n${YELLOW}You can manually test it later via:${PLAIN}"
     echo -e "${YELLOW}${MONITOR_SCRIPT} test${PLAIN}"
