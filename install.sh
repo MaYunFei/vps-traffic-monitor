@@ -49,45 +49,31 @@ case "$OS_NAME" in
         ;;
 esac
 
-# 2. Config vnstat billing reset day
-echo -e "\n${YELLOW}Step 2: Configuring vnstat MonthRotate day...${PLAIN}"
-read -p "Enter your monthly billing billing cycle reset day (1-28) [default: 22]: " RESET_DAY
-RESET_DAY=${RESET_DAY:-22}
-
-if ! [[ "$RESET_DAY" =~ ^[0-9]+$ ]] || [ "$RESET_DAY" -lt 1 ] || [ "$RESET_DAY" -gt 28 ]; then
-    echo -e "${RED}Invalid day, falling back to 22.${PLAIN}"
-    RESET_DAY=22
-fi
-
-VNSTAT_CONF="/etc/vnstat.conf"
-if [ -f "$VNSTAT_CONF" ]; then
-    # Modify MonthRotate line in vnstat.conf
-    # Typically looks like: MonthRotate 1
-    sed -i 's/;*MonthRotate.*/MonthRotate '$RESET_DAY'/' "$VNSTAT_CONF"
-    echo -e "vnstat billing cycle set to reset on day: ${GREEN}$RESET_DAY${PLAIN}"
-
-    # Restart vnstat service
-    systemctl restart vnstat
-    systemctl enable vnstat
-    echo -e "vnstat service restarted."
-else
-    echo -e "${RED}Warning: vnstat.conf not found at $VNSTAT_CONF. Please configure manually.${PLAIN}"
-fi
-
-# 3. Setup Config File and Scripts
-echo -e "\n${YELLOW}Step 3: Setting up local configurations and scripts...${PLAIN}"
+# 2. Check for existing configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="/opt/vps-traffic-monitor"
-
-# Ensure target directory exists
-mkdir -p "$INSTALL_DIR"
 CONFIG_FILE="${INSTALL_DIR}/config.env"
 MONITOR_SCRIPT="${INSTALL_DIR}/traffic_monitor.sh"
 EXAMPLE_CONFIG="${INSTALL_DIR}/config.env.example"
 
 GITHUB_RAW_URL="https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main"
 
-# Copy local files if in a cloned repository, otherwise download them
+# Ensure target directory exists for deployment
+mkdir -p "$INSTALL_DIR"
+
+REBUILD_CONFIG=true
+if [ -f "$CONFIG_FILE" ]; then
+    echo -e "\n${YELLOW}Existing configuration detected at $CONFIG_FILE.${PLAIN}"
+    read -p "Do you want to reconfigure it? [y/N]: " RECONF
+    RECONF=${RECONF:-n}
+    if [[ ! "$RECONF" =~ ^[Yy]$ ]]; then
+        REBUILD_CONFIG=false
+        echo -e "${GREEN}Using existing configuration file.${PLAIN}"
+    fi
+fi
+
+# 3. Handle Script files copying or downloading
+echo -e "\n${YELLOW}Step 2: Copying project files...${PLAIN}"
 if [ -f "${SCRIPT_DIR}/traffic_monitor.sh" ]; then
     cp "${SCRIPT_DIR}/traffic_monitor.sh" "$MONITOR_SCRIPT"
     echo -e "Copied traffic_monitor.sh to ${GREEN}${INSTALL_DIR}${PLAIN}"
@@ -112,30 +98,120 @@ else
     fi
 fi
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    cp "$EXAMPLE_CONFIG" "$CONFIG_FILE"
-    echo -e "Created ${GREEN}config.env${PLAIN} from example."
-else
-    echo -e "${GREEN}config.env${PLAIN} already exists. Skipping copy."
-fi
-
-# Provide instructions for TG setup
-echo -e "\n${YELLOW}Please specify Telegram Bot configurations:${PLAIN}"
-read -p "Telegram Bot Token: " TG_TOKEN
-read -p "Telegram Chat ID: " TG_CHAT
-
-if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
-    sed -i 's/TELEGRAM_BOT_TOKEN=".*"/TELEGRAM_BOT_TOKEN="'$TG_TOKEN'"/' "$CONFIG_FILE"
-    sed -i 's/TELEGRAM_CHAT_ID=".*"/TELEGRAM_CHAT_ID="'$TG_CHAT'"/' "$CONFIG_FILE"
-    echo -e "Telegram settings updated in ${GREEN}config.env${PLAIN}."
-else
-    echo -e "${YELLOW}Credentials left empty. Please update config.env manually before running.${PLAIN}"
-fi
-
-# Ensure executable permissions
+# Ensure monitor script is executable
 chmod +x "$MONITOR_SCRIPT"
 
-# 4. Setup Cron Job
+# 4. Interactive Configuration setup
+if [ "$REBUILD_CONFIG" = "true" ]; then
+    echo -e "\n${YELLOW}Step 3: Setting up configurations interactively...${PLAIN}"
+
+    # Custom Hostname
+    echo -e "\n${BLUE}[1/5] 主机识别名称 (VPS_NAME)${PLAIN}"
+    echo -e "说明: 用于区分多台服务器，将在 Telegram 告警卡片标题中显示。"
+    read -p "请输入此 VPS 的展示名称 [默认: $(hostname)]: " VPS_NAME
+    VPS_NAME=${VPS_NAME:-$(hostname)}
+
+    # Limit GB
+    echo -e "\n${BLUE}[2/5] 月度流量限制总额 (LIMIT_GB)${PLAIN}"
+    echo -e "说明: VPS 商机提供的月度总流量限制数 (单位: GB)。"
+    read -p "请输入限制额度 [默认: 1000]: " LIMIT_GB
+    LIMIT_GB=${LIMIT_GB:-1000}
+    if ! [[ "$LIMIT_GB" =~ ^[0-9]+$ ]]; then
+        LIMIT_GB=1000
+    fi
+
+    # Alert Threshold
+    echo -e "\n${BLUE}[3/5] 起始报警阈值比例 (ALERT_THRESHOLD)${PLAIN}"
+    echo -e "说明: 流量消耗达到此百分比时开始报警，超量后还会阶梯式在 90%、95%、100% 时各告警一次。"
+    read -p "请输入起始警报比例 (0-100) [默认: 80]: " ALERT_THRESHOLD
+    ALERT_THRESHOLD=${ALERT_THRESHOLD:-80}
+    if ! [[ "$ALERT_THRESHOLD" =~ ^[0-9]+$ ]] || [ "$ALERT_THRESHOLD" -lt 0 ] || [ "$ALERT_THRESHOLD" -gt 100 ]; then
+        ALERT_THRESHOLD=80
+    fi
+
+    # Reset Day
+    echo -e "\n${BLUE}[4/5] 账单重置日期 (RESET_DAY)${PLAIN}"
+    echo -e "说明: 你的 VPS 账单流量重置日(如 ZgoCloud 为每月 22 号)。"
+    echo -e "⚠️  受 vnstat 底层月份天数兼容设计限制，只能设置为 1-28 号。"
+    read -p "请输入每月重置日期 (1-28) [默认: 22]: " RESET_DAY
+    RESET_DAY=${RESET_DAY:-22}
+    if ! [[ "$RESET_DAY" =~ ^[0-9]+$ ]] || [ "$RESET_DAY" -lt 1 ] || [ "$RESET_DAY" -gt 28 ]; then
+        echo -e "${RED}输入无效，默认回退到 22 号。${PLAIN}"
+        RESET_DAY=22
+    fi
+
+    # Daily Report Setting
+    echo -e "\n${BLUE}[5/5] 每日例行流量总结报告 (DAILY_REPORT)${PLAIN}"
+    echo -e "说明: 每天定时向你汇报当前已用/剩余流量总结。"
+    read -p "是否开启运行报告? (y/n) [默认: y]: " WANT_DAILY
+    WANT_DAILY=${WANT_DAILY:-y}
+    if [[ "$WANT_DAILY" =~ ^[Nn]$ ]]; then
+        DAILY_REPORT=false
+        DAILY_REPORT_HOUR=9
+    else
+        DAILY_REPORT=true
+        read -p "   请输入每天定时推送的时间 (整点小时 0-23) [默认: 21 (晚上 9 点)]: " DAILY_HOUR
+        DAILY_REPORT_HOUR=${DAILY_HOUR:-21}
+        if ! [[ "$DAILY_REPORT_HOUR" =~ ^[0-9]+$ ]] || [ "$DAILY_REPORT_HOUR" -lt 0 ] || [ "$DAILY_REPORT_HOUR" -gt 23 ]; then
+            DAILY_REPORT_HOUR=21
+        fi
+    fi
+
+    # Telegram Credentials
+    echo -e "\n${YELLOW}Please specify Telegram Bot configurations:${PLAIN}"
+    read -p "Telegram Bot Token: " TG_TOKEN
+    read -p "Telegram Chat ID: " TG_CHAT
+
+    # Print a nice summary during configuration writing
+    cat <<EOF > "$CONFIG_FILE"
+# Telegram Bot Token
+TELEGRAM_BOT_TOKEN="${TG_TOKEN}"
+
+# Telegram Chat ID or Group ID
+TELEGRAM_CHAT_ID="${TG_CHAT}"
+
+# VPS Total monthly traffic limit in GB
+LIMIT_GB=${LIMIT_GB}
+
+# Network interface to monitor. If left empty, the script will auto-detect the default interface.
+INTERFACE=""
+
+# Warning threshold percentage (e.g., alert when usage reaches 80%)
+ALERT_THRESHOLD=${ALERT_THRESHOLD}
+
+# State directory for saving alert levels to prevent spam
+STATE_DIR="/tmp"
+
+# Enable daily traffic report summary (true/false)
+DAILY_REPORT=${DAILY_REPORT}
+
+# The hour of the day (0-23) to send the daily report summary (e.g., 9 for 9:00 AM)
+DAILY_REPORT_HOUR=${DAILY_REPORT_HOUR}
+
+# Optionally set a custom hostname to identify which VPS is reporting
+VPS_NAME="${VPS_NAME}"
+EOF
+
+    # Config vnstat billing reset day
+    VNSTAT_CONF="/etc/vnstat.conf"
+    if [ -f "$VNSTAT_CONF" ]; then
+        # Modify MonthRotate line in vnstat.conf
+        sed -i 's/;*MonthRotate.*/MonthRotate '$RESET_DAY'/' "$VNSTAT_CONF"
+        # Restart vnstat service
+        systemctl restart vnstat
+        systemctl enable vnstat
+    fi
+else
+    # Config is kept, we parse values to display the summary
+    # Load config variables to print summary
+    source "$CONFIG_FILE"
+    RESET_DAY=$(grep -E "^MonthRotate" /etc/vnstat.conf | awk '{print $2}')
+    RESET_DAY=${RESET_DAY:-1}
+    TG_TOKEN=$TELEGRAM_BOT_TOKEN
+    TG_CHAT=$TELEGRAM_CHAT_ID
+fi
+
+# 5. Setup Cron Job
 echo -e "\n${YELLOW}Step 4: Setting up Cron Job (Every 5 Minutes)...${PLAIN}"
 CRON_CMD="*/5 * * * * /bin/bash $MONITOR_SCRIPT > /dev/null 2>&1"
 
@@ -145,18 +221,32 @@ if [ $? -eq 0 ]; then
     echo -e "Cron job already exists. Skipping."
 else
     (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
-    echo -e "Cron job scheduled: ${GREEN}Hourly${PLAIN}"
+    echo -e "Cron job scheduled: ${GREEN}Every 5 Minutes${PLAIN}"
 fi
 
+# Show structural summary report
 echo -e "\n${GREEN}===============================================${PLAIN}"
 echo -e "${GREEN}     Installation Complete successfully!       ${PLAIN}"
 echo -e "${GREEN}===============================================${PLAIN}"
-echo -e "Make sure you completed configuration in: ${YELLOW}${CONFIG_FILE}${PLAIN}"
+echo -e "\n${BLUE}=== VPS Traffic Monitor Configurations ===${PLAIN}"
+echo -e "• VPS ID/Name:   ${YELLOW}${VPS_NAME}${PLAIN}"
+echo -e "• Traffic Limit: ${YELLOW}${LIMIT_GB} GB${PLAIN}"
+echo -e "• Alert Threshold:  ${YELLOW}${ALERT_THRESHOLD}%${PLAIN}"
+echo -e "• Billing Reset: Monthly Day ${YELLOW}${RESET_DAY}${PLAIN} (via vnstat)"
+echo -e "• Daily Report:  ${YELLOW}${DAILY_REPORT}${PLAIN}"
+if [ "$DAILY_REPORT" = "true" ]; then
+    echo -e "  └─ Report Hour: ${YELLOW}${DAILY_REPORT_HOUR}:00${PLAIN}"
+fi
+echo -e "• TG Token:      ${YELLOW}${TG_TOKEN:-(Not Configured)}${PLAIN}"
+echo -e "• TG Chat ID:    ${YELLOW}${TG_CHAT:-(Not Configured)}${PLAIN}"
+echo -e "• Absolute Path: ${YELLOW}${INSTALL_DIR}${PLAIN}"
+echo -e "==========================================="
 
 # Automatically trigger channel test if credentials are supplied
 if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
     echo -e "\n${YELLOW}Triggering Telegram notification test...${PLAIN}"
     /bin/bash "$MONITOR_SCRIPT" test
 else
-    echo -e "You can run it manually to test: ${YELLOW}${MONITOR_SCRIPT} test${PLAIN}"
+    echo -e "\n${YELLOW}You can manually test it later via:${PLAIN}"
+    echo -e "${YELLOW}${MONITOR_SCRIPT} test${PLAIN}"
 fi

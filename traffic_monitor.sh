@@ -13,7 +13,7 @@ else
 fi
 
 # Set defaults
-LIMIT_GB=${LIMIT_GB:-600}
+LIMIT_GB=${LIMIT_GB:-1000}
 ALERT_THRESHOLD=${ALERT_THRESHOLD:-80}
 STATE_DIR=${STATE_DIR:-"/tmp"}
 VPS_NAME=${VPS_NAME:-$(hostname)}

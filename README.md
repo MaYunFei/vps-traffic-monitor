@@ -50,7 +50,7 @@ nano /opt/vps-traffic-monitor/config.env
 | :--- | :--- | :--- |
 | `TELEGRAM_BOT_TOKEN` | - | 你的 Telegram Bot 访问 Token |
 | `TELEGRAM_CHAT_ID` | - | 你的 Telegram 聊天 ID/群组 ID |
-| `LIMIT_GB` | `600` | 月度流量限制总额 (单位: GB) |
+| `LIMIT_GB` | `1000` | 月度流量限制总额 (单位: GB) |
 | `INTERFACE` | `""` | 指定网卡，留空代表自动检测主默认网卡 |
 | `ALERT_THRESHOLD` | `80` | 起始报警阈值比例 (如已用 80% 时开始报警) |
 | `DAILY_REPORT` | `true` | 是否启用每日流量例行报告总结 (`true`/`false`) |
@@ -79,6 +79,36 @@ nano /opt/vps-traffic-monitor/config.env
 ```bash
 vnstat
 ```
+
+---
+
+## 🗑 一键卸载
+
+如果你需要完全清理和卸载监测工具，只需在 VPS 上以 `root` 用户运行以下卸载命令：
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/uninstall.sh)"
+```
+
+> **注**：卸载程序将自动：
+> 1. 清理 Cron 时钟检测任务。
+> 2. 将 `/etc/vnstat.conf` 中的账单结算日重置回默认的每月 1 号。
+> 3. 清理并彻底删除安装所在绝对目录 `/opt/vps-traffic-monitor/`。
+
+---
+
+## 🛠️ 重新配置或更新参数
+
+你随时可以再次运行一键安装配置命令来修改配置（例如变更流量额度、阈值或重设 TG Bot）：
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/install.sh)"
+```
+
+当检测到系统已存在原配置文件时，脚本会安全地向你确认：
+- **`Do you want to reconfigure it? [y/N]`**
+  - **输入 `y`**：你可以重新交互输入所有参数并覆盖更新。
+  - **直接回车或输入 `n`**：不变更历史参数配置，仅修复被改动或丢失的脚本及定时任务文件。
 
 ---
 
