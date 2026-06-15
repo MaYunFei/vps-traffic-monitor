@@ -1,0 +1,12 @@
+# System files
+.DS_Store
+
+# Local configuration containing sensitive tokens
+config.env
+
+# Status files and logs
+*.state
+*.log
+
+# Personal blog drafts (not for github repo)
+TROUBLESHOOTING_AND_BLOG_NOTES.md
