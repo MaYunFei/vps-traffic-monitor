@@ -100,6 +100,7 @@ INSTALL_DIR="/opt/vps-traffic-monitor"
 CONFIG_FILE="${INSTALL_DIR}/config.env"
 MONITOR_SCRIPT="${INSTALL_DIR}/traffic_monitor.sh"
 LISTENER_SCRIPT="${INSTALL_DIR}/traffic_bot_listener.sh"
+UNINSTALL_SCRIPT="${INSTALL_DIR}/uninstall.sh"
 EXAMPLE_CONFIG="${INSTALL_DIR}/config.env.example"
 
 GITHUB_RAW_URL="https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main"
@@ -209,9 +210,35 @@ else
     fi
 fi
 
+# Copy or download uninstall.sh
+if [ -f "${SCRIPT_DIR}/uninstall.sh" ]; then
+    cp "${SCRIPT_DIR}/uninstall.sh" "$UNINSTALL_SCRIPT"
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        echo -e "已复制 uninstall.sh 到 ${GREEN}${INSTALL_DIR}${PLAIN}"
+    else
+        echo -e "Copied uninstall.sh to ${GREEN}${INSTALL_DIR}${PLAIN}"
+    fi
+else
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        echo -e "正在从仓库下载 ${YELLOW}uninstall.sh${PLAIN}..."
+    else
+        echo -e "Downloading ${YELLOW}uninstall.sh${PLAIN} from repository..."
+    fi
+    curl -fsSL "${GITHUB_RAW_URL}/uninstall.sh" -o "$UNINSTALL_SCRIPT"
+    if [ $? -ne 0 ]; then
+        if [ "$MONITOR_LANG" = "zh" ]; then
+            echo -e "${RED}错误: 无法下载 uninstall.sh${PLAIN}" >&2
+        else
+            echo -e "${RED}Error: Failed to download uninstall.sh${PLAIN}" >&2
+        fi
+        exit 1
+    fi
+fi
+
 # Ensure scripts are executable
 chmod +x "$MONITOR_SCRIPT"
 chmod +x "$LISTENER_SCRIPT"
+chmod +x "$UNINSTALL_SCRIPT"
 
 # 4. Interactive Configuration setup
 if [ "$REBUILD_CONFIG" = "true" ]; then
@@ -554,6 +581,7 @@ if [ "$MONITOR_LANG" = "zh" ]; then
     echo -e "• TG Token:      ${YELLOW}${TG_TOKEN:-(未配置)}${PLAIN}"
     echo -e "• TG Chat ID:    ${YELLOW}${TG_CHAT:-(未配置)}${PLAIN}"
     echo -e "• 安装绝对目录:  ${YELLOW}${INSTALL_DIR}${PLAIN}"
+    echo -e "• 本地卸载脚本:  ${YELLOW}${INSTALL_DIR}/uninstall.sh${PLAIN}"
     echo -e "==========================================="
 else
     echo -e "${GREEN}     Installation Complete successfully!       ${PLAIN}"
@@ -572,6 +600,7 @@ else
     echo -e "• TG Token:         ${YELLOW}${TG_TOKEN:-(Not Configured)}${PLAIN}"
     echo -e "• TG Chat ID:       ${YELLOW}${TG_CHAT:-(Not Configured)}${PLAIN}"
     echo -e "• Absolute Path:    ${YELLOW}${INSTALL_DIR}${PLAIN}"
+    echo -e "• Local Uninstaller: ${YELLOW}${INSTALL_DIR}/uninstall.sh${PLAIN}"
     echo -e "==========================================="
 fi
 

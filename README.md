@@ -83,6 +83,12 @@ Retrieve basic local system network traffic stats via native CLI:
 vnstat
 ```
 
+⚠️ **Important Notice for Multi-VPS Setup**: 
+Telegram strictly prohibits running multiple polling connections (`getUpdates` - the active command listener) on a single Bot Token simultaneously. If you have multiple VPS instances using the **same Bot Token**, they will conflict (causing 409 errors), and `/traffic` commands will only be answered by one of them at random. 
+**Best Practices**:
+1. Assign a unique Telegram Bot (individual Token) for each VPS.
+2. Alternatively, only enable the active query listener daemon on **one** of your VPS servers, and leave others running in push-only mode (choose `n` for listener service onboarding during installation). Single-direction push notifications from multiple servers using the same Bot Token will work completely fine and do not conflict.
+
 ---
 
 ## 📊 Telegram Message Previews
@@ -146,8 +152,13 @@ Status is good, monitoring active...
 
 ## 🗑 One-Click Uninstall
 
-To clean files, cron configurations, and systemd services, run as `root`:
+To clean files, cron configurations, and systemd services, it is highly recommended to run the local uninstaller script as `root`:
 
+```bash
+sudo /bin/bash /opt/vps-traffic-monitor/uninstall.sh
+```
+
+Alternatively, you can run the remote oneclick uninstall command:
 ```bash
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/uninstall.sh)"
 ```
@@ -239,6 +250,12 @@ nano /opt/vps-traffic-monitor/config.env
 vnstat
 ```
 
+⚠️ **多 VPS 共用 Bot 时的冲突警告**: 
+Telegram 协议限制同一个 Bot Token 在同一时刻只能由一个长轮询连接（`getUpdates`，即后台监听服务）接管。如果您有多个 VPS 配置了**同一个** Bot Token 并同时开启了主动查询监听，监听程序会互相争抢消息更新队列（导致 409 连接冲突），使得最终只有一个 VPS 不定时地回复查询。
+**最佳实践建议**：
+1. **推荐做法**：为每个 VPS 申请**独立的 Telegram Bot Token**，使用不同的机器人分别查询。
+2. **共用 Token 做法**：仅在其中**一台**核心 VPS 上开启主动查询监听脚本，其他 VPS 一键安装时不启用主动查询监听（在一键安装选择主动监听服务时输入 `n` 即可）。多台 VPS 定时推送/阈值警报发消息到同一个 Token/会话是完全支持的，不会产生任何冲突。
+
 ---
 
 ## 📊 Telegram 消息卡片预览
@@ -302,7 +319,13 @@ vnstat
 
 ## 🗑 一键卸载
 
-如果你需要完全清理和卸载监测工具，只需在 VPS 上以 `root` 用户运行以下卸载命令：
+如果你需要完全清理和卸载监测工具，建议直接运行本地卸载脚本：
+
+```bash
+sudo /bin/bash /opt/vps-traffic-monitor/uninstall.sh
+```
+
+或者在 VPS 上以 `root` 用户运行以下远程卸载命令：
 
 ```bash
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/uninstall.sh)"
