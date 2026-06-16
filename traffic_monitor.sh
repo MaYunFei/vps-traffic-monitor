@@ -13,6 +13,7 @@ else
 fi
 
 # Set defaults
+MONITOR_LANG=${MONITOR_LANG:-"en"}
 LIMIT_GB=${LIMIT_GB:-1000}
 ALERT_THRESHOLD=${ALERT_THRESHOLD:-80}
 STATE_DIR=${STATE_DIR:-"/tmp"}
@@ -24,7 +25,11 @@ DAILY_REPORT_HOUR=${DAILY_REPORT_HOUR:-9}
 if [ -z "$INTERFACE" ]; then
     INTERFACE=$(ip route show | grep default | awk '{print $5}' | head -n 1)
     if [ -z "$INTERFACE" ]; then
-        echo "Error: Could not auto-detect default network interface." >&2
+        if [ "$MONITOR_LANG" = "zh" ]; then
+            echo "错误: 无法自动检测默认网络接口。" >&2
+        else
+            echo "Error: Could not auto-detect default network interface." >&2
+        fi
         exit 1
     fi
 fi
@@ -33,23 +38,36 @@ fi
 ALERT_STATE_FILE="${STATE_DIR}/vps_traffic_alert_${INTERFACE}.state"
 DAILY_STATE_FILE="${STATE_DIR}/vps_traffic_daily_${INTERFACE}.state"
 
+# Read Reset Day from vnstat.conf if available
+RESET_DAY=$(grep -E "^MonthRotate" /etc/vnstat.conf 2>/dev/null | awk '{print $2}')
+RESET_DAY=${RESET_DAY:-1}
+
 send_tg_notification() {
     local text="$1"
-    if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+    local target_chat="${2:-$TELEGRAM_CHAT_ID}"
+    if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$target_chat" ]; then
         # Use http proxy if needed (can be customized by users if they have a proxy)
         curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "chat_id=${target_chat}" \
             -d "parse_mode=Markdown" \
             -d "text=${text}" > /dev/null
     else
-        echo "Telegram credentials not configured." >&2
+        if [ "$MONITOR_LANG" = "zh" ]; then
+            echo "未配置 Telegram 凭据。" >&2
+        else
+            echo "Telegram credentials not configured." >&2
+        fi
     fi
 }
 
 # Fetch vnstat monthly data (JSON mode)
 VNSTAT_JSON=$(vnstat --json -i "$INTERFACE" 2>/dev/null)
 if [ -z "$VNSTAT_JSON" ]; then
-    echo "Error: Failed to query vnstat JSON data for interface $INTERFACE." >&2
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        echo "错误: 无法为网卡 $INTERFACE 查询 vnstat JSON 流量数据。" >&2
+    else
+        echo "Error: Failed to query vnstat JSON data for interface $INTERFACE." >&2
+    fi
     exit 1
 fi
 
@@ -74,32 +92,165 @@ USED_PERCENT=$(echo "scale=0; ($TOTAL_BYTES * 100) / ($LIMIT_GB * 1073741824)" |
 RX_GB=$(echo "scale=2; $RX / 1073741824" | bc)
 TX_GB=$(echo "scale=2; $TX / 1073741824" | bc)
 
-# Handle manual test execution
-if [ "$1" = "test" ] || [ "$1" = "--test" ]; then
-    echo "Sending test Telegram notification with real statistics..."
-    # Read Reset Day from vnstat.conf if available
-    RESET_DAY=$(grep -E "^MonthRotate" /etc/vnstat.conf 2>/dev/null | awk '{print $2}')
-    RESET_DAY=${RESET_DAY:-1}
-
-    TEST_MESSAGE="🔔 *VPS 流量监控测试通知* ($VPS_NAME)
+generate_message() {
+    local type="$1"
+    local current_stage="$2"
+    local message=""
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        case "$type" in
+            test)
+                message="🔔 *VPS 流量监控测试通知* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *监控网卡*: $INTERFACE
 • *下载流量 (RX)*: ${RX_GB} GB
 • *上传流量 (TX)*: ${TX_GB} GB
 • *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
-• *使用空间*: *${USED_PERCENT}%*
+• *使用比例*: *${USED_PERCENT}%*
+• *计算周期*: 每月 ${RESET_DAY} 号重置"
+                ;;
+            alert)
+                message="⚠️ *VPS 流量告警通知* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *网卡名称*: $INTERFACE
+• *下载流量 (RX)*: ${RX_GB} GB
+• *上传流量 (TX)*: ${TX_GB} GB
+• *合计已用*: *${USED_GB} GB*
+• *流量配额*: ${LIMIT_GB} GB
+• *消耗比例*: *${USED_PERCENT}%*
+• *警告阈值*: ${current_stage}% 📈
+• *账单重置*: 每月 ${RESET_DAY} 号
+
+_流量消耗已达到设定等级，请及时调整使用策略。_"
+                ;;
+            reset)
+                message="✅ *VPS 流量重置通知* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *网卡名称*: $INTERFACE
+• *新周期已用*: ${USED_GB} GB
+• *使用比例*: ${USED_PERCENT}%
+• *账单重置*: 已于每月 ${RESET_DAY} 号完成重置 ♻️"
+                ;;
+            daily)
+                local remaining_gb=$(echo "scale=2; $LIMIT_GB - $USED_GB" | bc)
+                message="📊 *VPS 每日流量汇报* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *监控网卡*: $INTERFACE
+• *下载流量 (RX)*: ${RX_GB} GB
+• *上传流量 (TX)*: ${TX_GB} GB
+• *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
+• *剩余流量*: ${remaining_gb} GB
+• *使用比例*: *${USED_PERCENT}%*
 • *计算周期*: 每月 ${RESET_DAY} 号重置
 
-💡 _如果你没有在 Telegram 收到此消息，请仔细检查 config.env 里的 Bot Token 或 Chat ID 是否配置有误。_"
+_状态良好，监控运行中..._"
+                ;;
+            query)
+                message="📊 *VPS 流量实时状态* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *监控网卡*: $INTERFACE
+• *下载流量 (RX)*: ${RX_GB} GB
+• *上传流量 (TX)*: ${TX_GB} GB
+• *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
+• *使用比例*: *${USED_PERCENT}%*
+• *计算周期*: 每月 ${RESET_DAY} 号重置"
+                ;;
+        esac
+    else
+        case "$type" in
+            test)
+                message="🔔 *VPS Traffic Monitor Test* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *Interface*: $INTERFACE
+• *Download (RX)*: ${RX_GB} GB
+• *Upload (TX)*: ${TX_GB} GB
+• *Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
+• *Usage Ratio*: *${USED_PERCENT}%*
+• *Billing Cycle*: Monthly day ${RESET_DAY}"
+                ;;
+            alert)
+                message="⚠️ *VPS Traffic Alert* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *Interface*: $INTERFACE
+• *Download (RX)*: ${RX_GB} GB
+• *Upload (TX)*: ${TX_GB} GB
+• *Total Used*: *${USED_GB} GB*
+• *Quota*: ${LIMIT_GB} GB
+• *Usage Ratio*: *${USED_PERCENT}%*
+• *Threshold*: ${current_stage}% 📈
+• *Billing Cycle*: Monthly day ${RESET_DAY}
+
+_Traffic consumption has reached the threshold. Adjust usage accordingly._"
+                ;;
+            reset)
+                message="✅ *VPS Traffic Reset* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *Interface*: $INTERFACE
+• *New Term Used*: ${USED_GB} GB
+• *Usage Ratio*: ${USED_PERCENT}%
+• *Billing Cycle*: Reset on monthly day ${RESET_DAY} ♻️"
+                ;;
+            daily)
+                local remaining_gb=$(echo "scale=2; $LIMIT_GB - $USED_GB" | bc)
+                message="📊 *VPS Daily Traffic Report* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *Interface*: $INTERFACE
+• *Download (RX)*: ${RX_GB} GB
+• *Upload (TX)*: ${TX_GB} GB
+• *Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
+• *Remaining*: ${remaining_gb} GB
+• *Usage Ratio*: *${USED_PERCENT}%*
+• *Billing Cycle*: Monthly day ${RESET_DAY}
+
+_Status is good, monitoring active..._"
+                ;;
+            query)
+                message="📊 *VPS Real-time Traffic Status* ($VPS_NAME)
+━━━━━━━━━━━━━━━━━━
+• *Interface*: $INTERFACE
+• *Download (RX)*: ${RX_GB} GB
+• *Upload (TX)*: ${TX_GB} GB
+• *Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
+• *Usage Ratio*: *${USED_PERCENT}%*
+• *Billing Cycle*: Monthly day ${RESET_DAY}"
+                ;;
+        esac
+    fi
+    echo "$message"
+}
+
+# Handle manual test execution
+if [ "$1" = "test" ] || [ "$1" = "--test" ]; then
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        echo "正在向 Telegram 发送包含实时数据的测试通知..."
+    else
+        echo "Sending test Telegram notification with real statistics..."
+    fi
+    TEST_MESSAGE=$(generate_message "test")
     send_tg_notification "$TEST_MESSAGE"
-    echo "Test message sent. Please check your Telegram."
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        echo "测试消息已发送，请检查您的 Telegram。"
+    else
+        echo "Test message sent. Please check your Telegram."
+    fi
+    exit 0
+fi
+
+# Handle active query execution
+if [ "$1" = "query" ] || [ "$1" = "--query" ]; then
+    QUERY_MESSAGE=$(generate_message "query")
+    target_chat="$2"
+    send_tg_notification "$QUERY_MESSAGE" "${target_chat:-$TELEGRAM_CHAT_ID}"
     exit 0
 fi
 
 if [ "$RX" = "0" ] && [ "$TOTAL_BYTES" = "0" ]; then
     # Maybe vnstat has no monthly stats accumulated yet.
     # In older vnstat versions or fresh installs, month[0] might not contain data. Fall back to total or exit.
-    echo "Warning: vnstat monthly stats not ready yet."
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        echo "警告: vnstat 月度流量统计数据尚未就绪。"
+    else
+        echo "Warning: vnstat monthly stats not ready yet."
+    fi
     exit 0
 fi
 
@@ -125,37 +276,16 @@ if [ -f "$ALERT_STATE_FILE" ]; then
     fi
 fi
 
-# Format values for readable output in TG
-RX_GB=$(echo "scale=2; $RX / 1073741824" | bc)
-TX_GB=$(echo "scale=2; $TX / 1073741824" | bc)
-
 # Trigger notifications if we moved to a higher alert stage
 if [ "$CURRENT_STAGE" -gt "$LAST_STAGE" ]; then
-    MESSAGE="⚠️ *VPS 流量告警通知* ($VPS_NAME)
-━━━━━━━━━━━━━━━━━━
-• *网卡名称*: $INTERFACE
-• *下载流量 (RX)*: ${RX_GB} GB
-• *上传流量 (TX)*: ${TX_GB} GB
-• *算计已用*: *${USED_GB} GB*
-• *流量配额*: ${LIMIT_GB} GB
-• *消耗比例*: *${USED_PERCENT}%*
-• *警告阈值*: ${CURRENT_STAGE}% 📈
-• *账单重置*: 每月 22 号
-
-_流量消耗已达到设定等级，请及时调整使用策略。_"
-
+    MESSAGE=$(generate_message "alert" "$CURRENT_STAGE")
     send_tg_notification "$MESSAGE"
 fi
 
 # Reset state when usage drops below the alert thresholds (e.g., billing cycle resets)
 if [ "$CURRENT_STAGE" -lt "$LAST_STAGE" ] || [ "$USED_PERCENT" -lt "$ALERT_THRESHOLD" ]; then
     if [ "$LAST_STAGE" -gt 0 ] && [ "$USED_PERCENT" -lt "$ALERT_THRESHOLD" ]; then
-        RESET_MESSAGE="✅ *VPS 流量重置通知* ($VPS_NAME)
-━━━━━━━━━━━━━━━━━━
-• *网卡名称*: $INTERFACE
-• *新周期已用*: ${USED_GB} GB
-• *使用比例*: ${USED_PERCENT}%
-• *账单重置*: 已于每月 22 号完成重置 ♻️"
+        RESET_MESSAGE=$(generate_message "reset")
         send_tg_notification "$RESET_MESSAGE"
     fi
 fi
@@ -179,18 +309,7 @@ if [ "$DAILY_REPORT" = "true" ]; then
 
         # If we haven't sent the report today
         if [ "$LAST_DAILY_DATE" != "$CURRENT_DATE" ]; then
-            DAILY_MESSAGE="📊 *VPS 每日流量汇报* ($VPS_NAME)
-━━━━━━━━━━━━━━━━━━
-• *监控网卡*: $INTERFACE
-• *下载流量 (RX)*: ${RX_GB} GB
-• *上传流量 (TX)*: ${TX_GB} GB
-• *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
-• *剩余流量*: $(echo "scale=2; $LIMIT_GB - $USED_GB" | bc) GB
-• *使用空间*: *${USED_PERCENT}%*
-• *计算周期*: 每月 22 号重置
-
-_状态良好，监控运行中..._"
-
+            DAILY_MESSAGE=$(generate_message "daily")
             send_tg_notification "$DAILY_MESSAGE"
             # Mark as sent for today
             echo "$CURRENT_DATE" > "$DAILY_STATE_FILE"

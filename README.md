@@ -1,6 +1,168 @@
-# VPS Traffic Monitor (VPS 流量监控与 Telegram 告警脚本)
+# VPS Traffic Monitor & Telegram Alerts (VPS 流量监控与 Telegram 告警脚本)
 
-这是一个轻量级、零外部依赖的 Linux VPS 流量监控及 Telegram 自动告警脚本。基于系统底层的流量统计工具 `vnstat`，并且支持自定义账单周期重置日、多档次阶梯报警，非常适合用于监控像 ZgoCloud、搬瓦工、DMIT 等有流量限制的 VPS。
+[English](#english) | [简体中文](#简体中文)
+
+---
+
+# English
+
+A lightweight, zero-dependency Linux VPS traffic monitoring and Telegram alert script. Based on the system-level traffic statistics tool `vnstat`, it supports custom billing cycle reset days, multi-level alert thresholds, and on-demand active status queries. Perfect for configuration-limited VPS providers (e.g., ZgoCloud, BandwagonHost, DMIT, etc.).
+
+## ✨ Features
+
+- 🚀 **Pure Shell Implementation**: Extremely lightweight, no Python/Node.js dependencies, virtually zero CPU/RAM footprint.
+- 🎯 **Billing Period Alignment**: Custom billing day reset option (e.g., reset on the 22nd), matching billing cycles exactly.
+- 🔔  **Multi-Level Alerts**: Anti-spam alerts that trigger once at each tier (e.g., 80% $\rightarrow$ 90% $\rightarrow$ 95% $\rightarrow$ 100%), preventing notification flood.
+- ♻️ **Auto Reset & Report**: Emits a traffic metric summary from the previous cycle once it resets, clearing alert history state.
+- 🔌 **Auto Interface Detection**: Automatically identifies default public interfaces without manual settings.
+- 🔍 **Active Bot Commands (Optional)**: A systemd-managed polling daemon allowing you to send `/traffic` or `/status` to query usage dynamically.
+- ⚙️ **Config & Code Separation**: All custom variables reside in `config.env` for security and clean updates.
+
+---
+
+## 🛠 Easy Installation
+
+Simply execute the following command as `root` on your Linux VPS:
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/install.sh)"
+```
+
+- During installation, you will be prompted to select your language (`English` or `简体中文`).
+- You can configure the monthly limit, alert threshold, billing reset day, daily scheduled reports, and whether to enable the active `/traffic` Command Listener Service.
+
+---
+
+## ⏰ Timing Interval & Security Notice
+
+For safety against burst bandwidth usage (e.g. DDoS, loop bugs), the cron task inspects traffic data **every 5 minutes**.
+
+- **Why cron instead of a heavy resident daemon?**
+  Cron execution is optimized. The script reads vnstat metrics in JSON dynamically, taking only milliseconds.
+- **What is the 5-minute safety threshold margin?**
+  At 1 Gbps max throughput, the VPS transfers at most **37.5 GB** in 5 minutes. If quota warning thresholds are set to `80%` or `90%`, it leaves a safe gap for you to take controls before limits are exceeded.
+
+---
+
+## ⚙️ Configuration Properties (`config.env`)
+
+You can directly manage your settings via:
+```bash
+nano /opt/vps-traffic-monitor/config.env
+```
+
+| Config Key | Default | Description |
+| :--- | :--- | :--- |
+| `MONITOR_LANG` | `en` | Bot card language and output messages (`en` / `zh`). |
+| `TELEGRAM_BOT_TOKEN` | - | Access Token for your Telegram Bot |
+| `TELEGRAM_CHAT_ID` | - | Chat ID or Group ID to push alerts/receive query commands |
+| `LIMIT_GB` | `1000` | Monthly traffic quota limit in GB |
+| `INTERFACE` | `""` | Dedicated interface to monitor (auto-detects default if empty) |
+| `ALERT_THRESHOLD` | `80` | Starting alert percentage threshold |
+| `DAILY_REPORT` | `true` | Daily scheduled traffic usage reports (`true`/`false`) |
+| `DAILY_REPORT_HOUR` | `9` | Hour of the day to send daily reports (0-23) |
+| `STATE_DIR` | `/tmp` | State tracking directory preventing spam alerts |
+| `VPS_NAME` | `hostname` | Host display identifier shown in alert notifications |
+
+---
+
+## 🔍 Manual Testing & Command Query
+
+Send a test visual card notification to verify Telegram paths:
+```bash
+/opt/vps-traffic-monitor/traffic_monitor.sh test
+```
+
+Perform automated query and echo/send output card payload:
+```bash
+/opt/vps-traffic-monitor/traffic_monitor.sh query [chat_id]
+```
+
+Retrieve basic local system network traffic stats via native CLI:
+```bash
+vnstat
+```
+
+---
+
+## 📊 Telegram Message Previews
+
+Below are the styles of notifications sent by the Telegram Bot for various events:
+
+#### 1. Test / Real-time Query Card
+```text
+📊 VPS Real-time Traffic Status (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• Interface: eth0
+• Download (RX): 120.45 GB
+• Upload (TX): 45.12 GB
+• Total Used: 165.57 GB (of 1000 GB)
+• Usage Ratio: 16%
+• Billing Cycle: Monthly day 22
+```
+
+#### 2. Usage Alert Warning Card
+```text
+⚠️ VPS Traffic Alert (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• Interface: eth0
+• Download (RX): 610.15 GB
+• Upload (TX): 192.40 GB
+• Total Used: 802.55 GB
+• Quota: 1000 GB
+• Usage Ratio: 80%
+• Threshold: 80% 📈
+• Billing Cycle: Monthly day 22
+
+Traffic consumption has reached the threshold. Adjust usage accordingly.
+```
+
+#### 3. Monthly Cycle Reset Notification
+```text
+✅ VPS Traffic Reset (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• Interface: eth0
+• New Term Used: 0.12 GB
+• Usage Ratio: 0%
+• Billing Cycle: Reset on monthly day 22 ♻️
+```
+
+#### 4. Scheduled Daily Usage Report
+```text
+📊 VPS Daily Traffic Report (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• Interface: eth0
+• Download (RX): 315.42 GB
+• Upload (TX): 112.50 GB
+• Total Used: 427.92 GB (of 1000 GB)
+• Remaining: 572.08 GB
+• Usage Ratio: 42%
+• Billing Cycle: Monthly day 22
+
+Status is good, monitoring active...
+```
+
+---
+
+## 🗑 One-Click Uninstall
+
+To clean files, cron configurations, and systemd services, run as `root`:
+
+```bash
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/uninstall.sh)"
+```
+
+Uninstall will automatically:
+1. Delete monitoring cron files.
+2. Disable and delete the systemd Telegram command listener service.
+3. Reset `/etc/vnstat.conf` MonthRotate back to the default (1st).
+4. Remove the installation directory `/opt/vps-traffic-monitor/`.
+
+---
+
+# 简体中文
+
+这是一个轻量级、零外部依赖的 Linux VPS 流量监控及 Telegram 自动告警与状态查询脚本。基于系统底层的流量统计工具 `vnstat`，并且支持自定义账单周期重置日、多档次阶梯报警，非常适合用于监控像 ZgoCloud、搬瓦工、DMIT 等有流量限制的 VPS。
 
 ## ✨ 特性
 
@@ -9,6 +171,7 @@
 - 🔔  **阶梯式防刷告警**: 流量耗尽达设定百分比后阶梯式警报（例如 80% $\rightarrow$ 90% $\rightarrow$ 95% $\rightarrow$ 100%），警报只在进入新阶段时发送一次，防止垃圾信息骚扰。
 - ♻️ **自动重置与报告**: 每一个账单周期重置后，自动发送上一周期的流量消费总结，并清空告警状态。
 - 🔌 **网卡自适应**: 自动识别系统默认公网网卡，无需手动麻烦配置。
+- 🔍 **Telegram 指令主动查询 (可选)**: 极轻量长轮询后台服务，允许通过给机器人发送 `/traffic` 或 `/status` 实时调取数据卡片。
 - ⚙️ **配置与代码分离**: 配置全部存于 `config.env`，便于脚本升级和防信息泄露（方便开源保存）。
 
 ---
@@ -21,10 +184,8 @@
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/install.sh)"
 ```
 
-> **注**: 在执行脚本过程中，它会提示你：
-> 1. 输入账单结算周期重置日（如 ZgoCloud 每月 `22` 号，则输入 `22`）。
-> 2. 输入你的 Telegram Bot Token 和 Telegram Chat ID。
-> 3. 自动将脚本写入 `cron` 定时任务（默认每 5 分钟执行一次检查）。
+- 安装中，首先选择系统安装语言偏好 (`1. English` 或 `2. 简体中文`)。
+- 随后您可以交互式配置流量重置日、月度流量总额、警报比例、每日例行汇报机制，以及配置并开启 `/traffic` Telegram 主动查询监听守护服务。
 
 ---
 
@@ -48,8 +209,9 @@ nano /opt/vps-traffic-monitor/config.env
 
 | 配置项 | 默认值 | 说明 |
 | :--- | :--- | :--- |
+| `MONITOR_LANG` | `en` | 发送卡片和交互提示使用的语言 (`en` / `zh`) |
 | `TELEGRAM_BOT_TOKEN` | - | 你的 Telegram Bot 访问 Token |
-| `TELEGRAM_CHAT_ID` | - | 你的 Telegram 聊天 ID/群组 ID |
+| `TELEGRAM_CHAT_ID` | - | 你的 Telegram 聊天 ID/群组 ID，用于接收推送和响应指令 |
 | `LIMIT_GB` | `1000` | 月度流量限制总额 (单位: GB) |
 | `INTERFACE` | `""` | 指定网卡，留空代表自动检测主默认网卡 |
 | `ALERT_THRESHOLD` | `80` | 起始报警阈值比例 (如已用 80% 时开始报警) |
@@ -62,22 +224,78 @@ nano /opt/vps-traffic-monitor/config.env
 
 ## 🔍 命令手动测试与通道验证
 
-在首次配完配置后，你可以手动调用绝对路径下的脚本触发一次 Telegram 推送通道测试：
+手动调用脚本触发送一次 Telegram 推送通道测试：
 ```bash
 /opt/vps-traffic-monitor/traffic_monitor.sh test
-# 或者
-/opt/vps-traffic-monitor/traffic_monitor.sh --test
 ```
-如果配置无误，你的 Telegram 客户端会在数秒内收到一条带勾选图标的测试卡片。
 
-你也可以静默试跑核心流量检测逻辑（只在超限时向 TG 推送告警）：
+手动触发一次当前状态卡片渲染返回：
 ```bash
-/opt/vps-traffic-monitor/traffic_monitor.sh
+/opt/vps-traffic-monitor/traffic_monitor.sh query [chat_id]
 ```
 
-如果要强制查看 `vnstat` 服务当前统计的网卡流量：
+强制查看 `vnstat` 服务当前统计的网卡流量：
 ```bash
 vnstat
+```
+
+---
+
+## 📊 Telegram 消息卡片预览
+
+以下是各类通知事件触发时，Telegram 机器人发送的信息卡片格式预览：
+
+#### 1. 测试/实时主动查询卡片
+```text
+📊 VPS 流量实时状态 (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• 监控网卡: eth0
+• 下载流量 (RX): 120.45 GB
+• 上传流量 (TX): 45.12 GB
+• 合计已用: *165.57 GB* (共 1000 GB)
+• 使用比例: *16%*
+• 计算周期: 每月 22 号重置
+```
+
+#### 2. 超限警报卡片
+```text
+⚠️ VPS 流量告警通知 (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• 网卡名称: eth0
+• 下载流量 (RX): 610.15 GB
+• 上传流量 (TX): 192.40 GB
+• 合计已用: *802.55 GB*
+• 流量配额: 1000 GB
+• 消耗比例: *80%*
+• 警告阈值: 80% 📈
+• 账单重置: 每月 22 号
+
+流量消耗已达到设定等级，请及时调整使用策略。
+```
+
+#### 3. 月度周期流量重置卡片
+```text
+✅ VPS 流量重置通知 (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• 网卡名称: eth0
+• 新周期已用: 0.12 GB
+• 使用比例: 0%
+• 账单重置: 已于每月 22 号完成重置 ♻️
+```
+
+#### 4. 每日例行流量报告卡片
+```text
+📊 VPS 每日流量汇报 (My-Dallas-VPS)
+━━━━━━━━━━━━━━━━━━
+• 监控网卡: eth0
+• 下载流量 (RX): 315.42 GB
+• 上传流量 (TX): 112.50 GB
+• 合计已用: *427.92 GB* (共 1000 GB)
+• 剩余流量: 572.08 GB
+• 使用比例: *42%*
+• 计算周期: 每月 22 号重置
+
+状态良好，监控运行中...
 ```
 
 ---
@@ -90,37 +308,11 @@ vnstat
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/uninstall.sh)"
 ```
 
-> **注**：卸载程序将自动：
-> 1. 清理 Cron 时钟检测任务。
-> 2. 将 `/etc/vnstat.conf` 中的账单结算日重置回默认的每月 1 号。
-> 3. 清理并彻底删除安装所在绝对目录 `/opt/vps-traffic-monitor/`。
-
----
-
-## 🛠️ 重新配置或更新参数
-
-你随时可以再次运行一键安装配置命令来修改配置（例如变更流量额度、阈值或重设 TG Bot）：
-
-```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/MaYunFei/vps-traffic-monitor/main/install.sh)"
-```
-
-当检测到系统已存在原配置文件时，脚本会安全地向你确认：
-- **`Do you want to reconfigure it? [y/N]`**
-  - **输入 `y`**：你可以重新交互输入所有参数并覆盖更新。
-  - **直接回车或输入 `n`**：不变更历史参数配置，仅修复被改动或丢失的脚本及定时任务文件。
-
----
-
-## 📋 常见问题与排错
-
-### 1. 为什么手动执行时提示 `vnstat: command not found`？
-- 本脚本安装器会自动尝试给你安装 `vnstat`。如果自动安装失败，可按照你系统类型手动安装：
-  - **Ubuntu/Debian**: `apt-get install -y vnstat jq bc curl`
-  - **CentOS/Rocky**: `yum install -y epel-release && yum install -y vnstat jq bc curl`
-
-### 2. 新安装的 vnstat 为什么不跑流量？
-- `vnstat` 在系统刚安装后的 **前几个小时** 默认可能尚未建立足够的日报表和月报表（需要等它守护进程收集一些数据）。因此脚本第一次跑显示 `Warning: vnstat monthly stats not ready yet` 是正常的，流量跑一阵子就好了。
+卸载程序将自动：
+1. 清理 Cron 时钟检测任务。
+2. 关闭、停用并清理 Telegram 后台监听服务系统单元。
+3. 将 `/etc/vnstat.conf` 中的账单结算日重置回默认的每月 1号。
+4. 清理并彻底删除安装所在绝对目录 `/opt/vps-traffic-monitor/`。
 
 ---
 
