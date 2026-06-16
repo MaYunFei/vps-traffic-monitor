@@ -95,7 +95,7 @@ Telegram strictly prohibits running multiple polling connections (`getUpdates` -
 
 Below are the styles of notifications sent by the Telegram Bot for various events:
 
-#### 1. Test / Real-time Query Card
+#### 1. Real-time Traffic Status Card (also used for `test`)
 ```text
 📊 VPS Real-time Traffic Status (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━
@@ -262,7 +262,7 @@ Telegram 协议限制同一个 Bot Token 在同一时刻只能由一个长轮询
 
 以下是各类通知事件触发时，Telegram 机器人发送的信息卡片格式预览：
 
-#### 1. 测试/实时主动查询卡片
+#### 1. 实时流量状态卡片（测试推送也使用此样式）
 ```text
 📊 VPS 流量实时状态 (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━

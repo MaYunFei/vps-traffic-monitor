@@ -19,7 +19,7 @@ ALERT_THRESHOLD=${ALERT_THRESHOLD:-80}
 STATE_DIR=${STATE_DIR:-"/tmp"}
 VPS_NAME=${VPS_NAME:-$(hostname)}
 DAILY_REPORT=${DAILY_REPORT:-false}
-DAILY_REPORT_HOUR=${DAILY_REPORT_HOUR:-9}
+DAILY_REPORT_HOUR=${DAILY_REPORT_HOUR:-21}
 
 # Auto-detect interface if empty
 if [ -z "$INTERFACE" ]; then
@@ -46,7 +46,6 @@ send_tg_notification() {
     local text="$1"
     local target_chat="${2:-$TELEGRAM_CHAT_ID}"
     if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$target_chat" ]; then
-        # Use http proxy if needed (can be customized by users if they have a proxy)
         curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d "chat_id=${target_chat}" \
             -d "parse_mode=Markdown" \
@@ -98,16 +97,6 @@ generate_message() {
     local message=""
     if [ "$MONITOR_LANG" = "zh" ]; then
         case "$type" in
-            test)
-                message="🔔 *VPS 流量监控测试通知* ($VPS_NAME)
-━━━━━━━━━━━━━━━━━━
-• *监控网卡*: $INTERFACE
-• *下载流量 (RX)*: ${RX_GB} GB
-• *上传流量 (TX)*: ${TX_GB} GB
-• *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
-• *使用比例*: *${USED_PERCENT}%*
-• *计算周期*: 每月 ${RESET_DAY} 号重置"
-                ;;
             alert)
                 message="⚠️ *VPS 流量告警通知* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
@@ -157,16 +146,6 @@ _状态良好，监控运行中..._"
         esac
     else
         case "$type" in
-            test)
-                message="🔔 *VPS Traffic Monitor Test* ($VPS_NAME)
-━━━━━━━━━━━━━━━━━━
-• *Interface*: $INTERFACE
-• *Download (RX)*: ${RX_GB} GB
-• *Upload (TX)*: ${TX_GB} GB
-• *Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
-• *Usage Ratio*: *${USED_PERCENT}%*
-• *Billing Cycle*: Monthly day ${RESET_DAY}"
-                ;;
             alert)
                 message="⚠️ *VPS Traffic Alert* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
@@ -218,14 +197,14 @@ _Status is good, monitoring active..._"
     echo "$message"
 }
 
-# Handle manual test execution
+# Handle manual test execution (reuses query card style)
 if [ "$1" = "test" ] || [ "$1" = "--test" ]; then
     if [ "$MONITOR_LANG" = "zh" ]; then
         echo "正在向 Telegram 发送包含实时数据的测试通知..."
     else
         echo "Sending test Telegram notification with real statistics..."
     fi
-    TEST_MESSAGE=$(generate_message "test")
+    TEST_MESSAGE=$(generate_message "query")
     send_tg_notification "$TEST_MESSAGE"
     if [ "$MONITOR_LANG" = "zh" ]; then
         echo "测试消息已发送，请检查您的 Telegram。"
@@ -244,8 +223,6 @@ if [ "$1" = "query" ] || [ "$1" = "--query" ]; then
 fi
 
 if [ "$RX" = "0" ] && [ "$TOTAL_BYTES" = "0" ]; then
-    # Maybe vnstat has no monthly stats accumulated yet.
-    # In older vnstat versions or fresh installs, month[0] might not contain data. Fall back to total or exit.
     if [ "$MONITOR_LANG" = "zh" ]; then
         echo "警告: vnstat 月度流量统计数据尚未就绪。"
     else
@@ -270,7 +247,6 @@ fi
 LAST_STAGE=0
 if [ -f "$ALERT_STATE_FILE" ]; then
     LAST_STAGE=$(cat "$ALERT_STATE_FILE")
-    # Quick sanity check
     if ! [[ "$LAST_STAGE" =~ ^[0-9]+$ ]]; then
         LAST_STAGE=0
     fi
@@ -297,7 +273,6 @@ echo "$CURRENT_STAGE" > "$ALERT_STATE_FILE"
 if [ "$DAILY_REPORT" = "true" ]; then
     CURRENT_HOUR=$(date '+%H')
     CURRENT_DATE=$(date '+%Y-%m-%d')
-    # Strip leading zero if any to prevent octal issue in bash comparison
     CURRENT_HOUR_INT=$((10#$CURRENT_HOUR))
     TARGET_HOUR_INT=$((10#$DAILY_REPORT_HOUR))
 
@@ -307,11 +282,9 @@ if [ "$DAILY_REPORT" = "true" ]; then
             LAST_DAILY_DATE=$(cat "$DAILY_STATE_FILE")
         fi
 
-        # If we haven't sent the report today
         if [ "$LAST_DAILY_DATE" != "$CURRENT_DATE" ]; then
             DAILY_MESSAGE=$(generate_message "daily")
             send_tg_notification "$DAILY_MESSAGE"
-            # Mark as sent for today
             echo "$CURRENT_DATE" > "$DAILY_STATE_FILE"
         fi
     fi
