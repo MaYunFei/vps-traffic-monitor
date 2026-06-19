@@ -251,6 +251,7 @@ if [ "$REBUILD_CONFIG" = "true" ]; then
     # Load existing values as defaults if configuration exists
     DEFAULT_VPS_NAME=$(hostname)
     DEFAULT_LIMIT_GB=1000
+    DEFAULT_INITIAL_USED=0
     DEFAULT_ALERT_THRESHOLD=80
     DEFAULT_RESET_DAY=1
     DEFAULT_DAILY="y"
@@ -264,6 +265,7 @@ if [ "$REBUILD_CONFIG" = "true" ]; then
         source "$CONFIG_FILE" 2>/dev/null
         DEFAULT_VPS_NAME=${VPS_NAME:-$DEFAULT_VPS_NAME}
         DEFAULT_LIMIT_GB=${LIMIT_GB:-$DEFAULT_LIMIT_GB}
+        DEFAULT_INITIAL_USED=${INITIAL_USED_GB:-$DEFAULT_INITIAL_USED}
         DEFAULT_ALERT_THRESHOLD=${ALERT_THRESHOLD:-$DEFAULT_ALERT_THRESHOLD}
         DEFAULT_DAILY_HOUR=${DAILY_REPORT_HOUR:-$DEFAULT_DAILY_HOUR}
         DEFAULT_TG_TOKEN=$TELEGRAM_BOT_TOKEN
@@ -309,6 +311,23 @@ if [ "$REBUILD_CONFIG" = "true" ]; then
     LIMIT_GB=${LIMIT_GB:-$DEFAULT_LIMIT_GB}
     if ! [[ "$LIMIT_GB" =~ ^[0-9]+$ ]]; then
         LIMIT_GB=$DEFAULT_LIMIT_GB
+    fi
+
+    # Already used traffic this month (one-time offset)
+    if [ "$MONITOR_LANG" = "zh" ]; then
+        echo -e "\n${BLUE}[2.5/6] 本月已使用流量 (INITIAL_USED_GB)${PLAIN}"
+        echo -e "说明: 安装 vnstat 前本月已消耗的流量，用于补偿初始统计偏差 (单位: GB)。"
+        echo -e "💡 仅首次运行时会加总一次，随后自动归零。"
+        read -p "请输入安装前本月已用流量 [默认: $DEFAULT_INITIAL_USED]: " INITIAL_USED_GB
+    else
+        echo -e "\n${BLUE}[2.5/6] Initial Used This Month (INITIAL_USED_GB)${PLAIN}"
+        echo -e "Desc: Traffic already consumed this billing cycle before vnstat was installed (in GB)."
+        echo -e "💡 One-time offset — applied on first run, then auto-resets to 0."
+        read -p "Enter already-used traffic this month [Default: $DEFAULT_INITIAL_USED]: " INITIAL_USED_GB
+    fi
+    INITIAL_USED_GB=${INITIAL_USED_GB:-$DEFAULT_INITIAL_USED}
+    if ! [[ "$INITIAL_USED_GB" =~ ^[0-9]+$ ]]; then
+        INITIAL_USED_GB=$DEFAULT_INITIAL_USED
     fi
 
     # Alert Threshold
@@ -441,6 +460,10 @@ TELEGRAM_CHAT_ID="${TG_CHAT}"
 # VPS Total monthly traffic limit in GB
 LIMIT_GB=${LIMIT_GB}
 
+# Already used traffic this billing cycle before installing monitor (GB).
+# One-time offset — auto-resets to 0 after first run.
+INITIAL_USED_GB=${INITIAL_USED_GB}
+
 # Network interface to monitor. If left empty, the script will auto-detect the default interface.
 INTERFACE=""
 
@@ -571,6 +594,9 @@ if [ "$MONITOR_LANG" = "zh" ]; then
     echo -e "• 语言设定:      ${YELLOW}${MONITOR_LANG}${PLAIN}"
     echo -e "• VPS 识别名称:  ${YELLOW}${VPS_NAME}${PLAIN}"
     echo -e "• 流量配额限额:  ${YELLOW}${LIMIT_GB} GB${PLAIN}"
+    if [ "$INITIAL_USED_GB" -gt 0 ]; then
+        echo -e "• 本月已用补偿:  ${YELLOW}${INITIAL_USED_GB} GB${PLAIN} (一次性，首次运行后归零)"
+    fi
     echo -e "• 警报限额比例:  ${YELLOW}${ALERT_THRESHOLD}%${PLAIN}"
     echo -e "• 账单重置周期:  每月 ${YELLOW}${RESET_DAY}${PLAIN} 号 (通过 vnstat)"
     echo -e "• 每日例行总结:  ${YELLOW}${DAILY_REPORT}${PLAIN}"
@@ -590,6 +616,9 @@ else
     echo -e "• Monitor Language: ${YELLOW}${MONITOR_LANG}${PLAIN}"
     echo -e "• VPS ID/Name:      ${YELLOW}${VPS_NAME}${PLAIN}"
     echo -e "• Traffic Limit:    ${YELLOW}${LIMIT_GB} GB${PLAIN}"
+    if [ "$INITIAL_USED_GB" -gt 0 ]; then
+        echo -e "• Initial Offset:   ${YELLOW}${INITIAL_USED_GB} GB${PLAIN} (one-time, auto-resets after first run)"
+    fi
     echo -e "• Alert Threshold:  ${YELLOW}${ALERT_THRESHOLD}%${PLAIN}"
     echo -e "• Billing Reset:    Monthly Day ${YELLOW}${RESET_DAY}${PLAIN} (via vnstat)"
     echo -e "• Daily Report:     ${YELLOW}${DAILY_REPORT}${PLAIN}"

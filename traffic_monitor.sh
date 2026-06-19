@@ -20,6 +20,7 @@ STATE_DIR=${STATE_DIR:-"/tmp"}
 VPS_NAME=${VPS_NAME:-$(hostname)}
 DAILY_REPORT=${DAILY_REPORT:-false}
 DAILY_REPORT_HOUR=${DAILY_REPORT_HOUR:-21}
+INITIAL_USED_GB=${INITIAL_USED_GB:-0}
 
 # Auto-detect interface if empty
 if [ -z "$INTERFACE" ]; then
@@ -84,12 +85,17 @@ fi
 
 TOTAL_BYTES=$((RX + TX))
 # Calculate usage (Floating point emulation using bc)
-USED_GB=$(echo "scale=2; $TOTAL_BYTES / 1073741824" | bc)
-USED_PERCENT=$(echo "scale=0; ($TOTAL_BYTES * 100) / ($LIMIT_GB * 1073741824)" | bc)
+USED_GB=$(echo "scale=2; $TOTAL_BYTES / 1073741824 + $INITIAL_USED_GB" | bc | awk '{printf "%.2f", $0}')
+USED_PERCENT=$(echo "scale=0; ($TOTAL_BYTES + $INITIAL_USED_GB * 1073741824) * 100 / ($LIMIT_GB * 1073741824)" | bc)
+
+# Auto-reset one-time initial offset after first use
+if [ "$INITIAL_USED_GB" != "0" ]; then
+    sed -i "s/^INITIAL_USED_GB=.*/INITIAL_USED_GB=0/" "$CONFIG_FILE"
+fi
 
 # Format values for readable output in TG
-RX_GB=$(echo "scale=2; $RX / 1073741824" | bc)
-TX_GB=$(echo "scale=2; $TX / 1073741824" | bc)
+RX_GB=$(echo "scale=2; $RX / 1073741824" | bc | awk '{printf "%.2f", $0}')
+TX_GB=$(echo "scale=2; $TX / 1073741824" | bc | awk '{printf "%.2f", $0}')
 
 generate_message() {
     local type="$1"
@@ -120,7 +126,7 @@ _流量消耗已达到设定等级，请及时调整使用策略。_"
 • *账单重置*: 已于每月 ${RESET_DAY} 号完成重置 ♻️"
                 ;;
             daily)
-                local remaining_gb=$(echo "scale=2; $LIMIT_GB - $USED_GB" | bc)
+                local remaining_gb=$(echo "scale=2; $LIMIT_GB - $USED_GB" | bc | awk '{printf "%.2f", $0}')
                 message="📊 *VPS 每日流量汇报* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *监控网卡*: $INTERFACE
@@ -169,7 +175,7 @@ _Traffic consumption has reached the threshold. Adjust usage accordingly._"
 • *Billing Cycle*: Reset on monthly day ${RESET_DAY} ♻️"
                 ;;
             daily)
-                local remaining_gb=$(echo "scale=2; $LIMIT_GB - $USED_GB" | bc)
+                local remaining_gb=$(echo "scale=2; $LIMIT_GB - $USED_GB" | bc | awk '{printf "%.2f", $0}')
                 message="📊 *VPS Daily Traffic Report* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *Interface*: $INTERFACE
