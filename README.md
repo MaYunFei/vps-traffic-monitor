@@ -100,9 +100,8 @@ Below are the styles of notifications sent by the Telegram Bot for various event
 📊 VPS Real-time Traffic Status (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━
 • Interface: eth0
-• Download (RX): 120.45 GB
-• Upload (TX): 45.12 GB
-• Total Used: 165.57 GB (of 1000 GB)
+• Today Traffic: 5.20 GB (RX: 3.80 / TX: 1.40)
+• Month Total Used: 165.57 GB (of 1000 GB)
 • Usage Ratio: 16%
 • Billing Cycle: Monthly day 22
 ```
@@ -138,11 +137,12 @@ Traffic consumption has reached the threshold. Adjust usage accordingly.
 📊 VPS Daily Traffic Report (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━
 • Interface: eth0
-• Download (RX): 315.42 GB
-• Upload (TX): 112.50 GB
-• Total Used: 427.92 GB (of 1000 GB)
-• Remaining: 572.08 GB
-• Usage Ratio: 42%
+• Today Download (RX): 4.15 GB
+• Today Upload (TX): 1.05 GB
+• Today Total Used: *5.20 GB* 📅
+• Month Total Used: *427.92 GB* (of 1000 GB)
+• Month Remaining: 572.08 GB
+• Usage Ratio: *42%*
 • Billing Cycle: Monthly day 22
 
 Status is good, monitoring active...
@@ -267,9 +267,8 @@ Telegram 协议限制同一个 Bot Token 在同一时刻只能由一个长轮询
 📊 VPS 流量实时状态 (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━
 • 监控网卡: eth0
-• 下载流量 (RX): 120.45 GB
-• 上传流量 (TX): 45.12 GB
-• 合计已用: *165.57 GB* (共 1000 GB)
+• 今日上传与下载: 5.20 GB (RX: 3.80 / TX: 1.40)
+• 本月已用 (累计): *165.57 GB* (共 1000 GB)
 • 使用比例: *16%*
 • 计算周期: 每月 22 号重置
 ```
@@ -305,10 +304,11 @@ Telegram 协议限制同一个 Bot Token 在同一时刻只能由一个长轮询
 📊 VPS 每日流量汇报 (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━
 • 监控网卡: eth0
-• 下载流量 (RX): 315.42 GB
-• 上传流量 (TX): 112.50 GB
-• 合计已用: *427.92 GB* (共 1000 GB)
-• 剩余流量: 572.08 GB
+• 今日下载 (RX): 4.15 GB
+• 今日上传 (TX): 1.05 GB
+• 今日合计已用: *5.20 GB* 📅
+• 本月已用 (累计): *427.92 GB* (共 1000 GB)
+• 本月剩余流量: 572.08 GB
 • 使用比例: *42%*
 • 计算周期: 每月 22 号重置
 

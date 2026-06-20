@@ -130,9 +130,32 @@ USED_GB=$(echo "scale=2; $VNSTAT_USED_GB + $INITIAL_OFFSET_GB" | bc | awk '{prin
 TOTAL_BYTES_OFFSET_EMULATED=$(echo "scale=0; ($TOTAL_BYTES + $INITIAL_OFFSET_GB * 1073741824) / 1" | bc)
 USED_PERCENT=$(echo "scale=0; $TOTAL_BYTES_OFFSET_EMULATED * 100 / ($LIMIT_GB * 1073741824)" | bc)
 
-# Format values for readable output in TG
+# Format values for readable output in TG (Month totals)
 RX_GB=$(echo "scale=2; $RX / 1073741824" | bc | awk '{printf "%.2f", $0}')
 TX_GB=$(echo "scale=2; $TX / 1073741824" | bc | awk '{printf "%.2f", $0}')
+
+# Fetch today's traffic statistics from vnstat JSON
+TODAY_YEAR=$(date '+%Y')
+TODAY_MONTH=$(date '+%m')
+TODAY_DAY=$(date '+%d')
+
+TODAY_DATA=$(echo "$VNSTAT_JSON" | jq --argjson y "$TODAY_YEAR" --argjson m "$((10#$TODAY_MONTH))" --argjson d "$((10#$TODAY_DAY))" \
+  '.interfaces[0].traffic.day[] | select(.date.year == $y and .date.month == $m and .date.day == $d)' 2>/dev/null)
+
+TODAY_RX=$(echo "$TODAY_DATA" | jq '.rx' 2>/dev/null)
+TODAY_TX=$(echo "$TODAY_DATA" | jq '.tx' 2>/dev/null)
+
+if [ "$TODAY_RX" = "null" ] || [ -z "$TODAY_RX" ]; then
+    TODAY_RX=0
+fi
+if [ "$TODAY_TX" = "null" ] || [ -z "$TODAY_TX" ]; then
+    TODAY_TX=0
+fi
+
+TODAY_TOTAL_BYTES=$((TODAY_RX + TODAY_TX))
+TODAY_RX_GB=$(echo "scale=2; $TODAY_RX / 1073741824" | bc | awk '{printf "%.2f", $0}')
+TODAY_TX_GB=$(echo "scale=2; $TODAY_TX / 1073741824" | bc | awk '{printf "%.2f", $0}')
+TODAY_TOTAL_GB=$(echo "scale=2; $TODAY_TOTAL_BYTES / 1073741824" | bc | awk '{printf "%.2f", $0}')
 
 generate_message() {
     local type="$1"
@@ -167,10 +190,11 @@ _流量消耗已达到设定等级，请及时调整使用策略。_"
                 message="📊 *VPS 每日流量汇报* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *监控网卡*: $INTERFACE
-• *下载流量 (RX)*: ${RX_GB} GB
-• *上传流量 (TX)*: ${TX_GB} GB
-• *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
-• *剩余流量*: ${remaining_gb} GB
+• *今日下载 (RX)*: ${TODAY_RX_GB} GB
+• *今日上传 (TX)*: ${TODAY_TX_GB} GB
+• *今日合计已用*: *${TODAY_TOTAL_GB} GB* 📅
+• *本月已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
+• *本月剩余流量*: ${remaining_gb} GB
 • *使用比例*: *${USED_PERCENT}%*
 • *计算周期*: 每月 ${RESET_DAY} 号重置
 
@@ -180,9 +204,8 @@ _状态良好，监控运行中..._"
                 message="📊 *VPS 流量实时状态* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *监控网卡*: $INTERFACE
-• *下载流量 (RX)*: ${RX_GB} GB
-• *上传流量 (TX)*: ${TX_GB} GB
-• *合计已用*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
+• *今日上传与下载*: ${TODAY_TOTAL_GB} GB (RX: ${TODAY_RX_GB} / TX: ${TODAY_TX_GB})
+• *本月已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
 • *使用比例*: *${USED_PERCENT}%*
 • *计算周期*: 每月 ${RESET_DAY} 号重置"
                 ;;
@@ -216,10 +239,11 @@ _Traffic consumption has reached the threshold. Adjust usage accordingly._"
                 message="📊 *VPS Daily Traffic Report* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *Interface*: $INTERFACE
-• *Download (RX)*: ${RX_GB} GB
-• *Upload (TX)*: ${TX_GB} GB
-• *Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
-• *Remaining*: ${remaining_gb} GB
+• *Today Download (RX)*: ${TODAY_RX_GB} GB
+• *Today Upload (TX)*: ${TODAY_TX_GB} GB
+• *Today Total Used*: *${TODAY_TOTAL_GB} GB* 📅
+• *Month Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
+• *Month Remaining*: ${remaining_gb} GB
 • *Usage Ratio*: *${USED_PERCENT}%*
 • *Billing Cycle*: Monthly day ${RESET_DAY}
 
@@ -229,9 +253,8 @@ _Status is good, monitoring active..._"
                 message="📊 *VPS Real-time Traffic Status* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *Interface*: $INTERFACE
-• *Download (RX)*: ${RX_GB} GB
-• *Upload (TX)*: ${TX_GB} GB
-• *Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
+• *Today Traffic*: ${TODAY_TOTAL_GB} GB (RX: ${TODAY_RX_GB} / TX: ${TODAY_TX_GB})
+• *Month Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
 • *Usage Ratio*: *${USED_PERCENT}%*
 • *Billing Cycle*: Monthly day ${RESET_DAY}"
                 ;;
