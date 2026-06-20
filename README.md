@@ -100,9 +100,11 @@ Below are the styles of notifications sent by the Telegram Bot for various event
 📊 VPS Real-time Traffic Status (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━
 • Interface: eth0
-• Today Traffic: 5.20 GB (RX: 3.80 / TX: 1.40)
-• Month Total Used: 165.57 GB (of 1000 GB)
-• Usage Ratio: 16%
+• Today Download (RX): 3.80 GB
+• Today Upload (TX): 1.40 GB
+• Today Total Used: *5.20 GB* 📅
+• Month Total Used: *165.57 GB* (of 1000 GB)
+• Usage Ratio: *16%*
 • Billing Cycle: Monthly day 22
 ```
 
@@ -267,7 +269,9 @@ Telegram 协议限制同一个 Bot Token 在同一时刻只能由一个长轮询
 📊 VPS 流量实时状态 (My-Dallas-VPS)
 ━━━━━━━━━━━━━━━━━━
 • 监控网卡: eth0
-• 今日上传与下载: 5.20 GB (RX: 3.80 / TX: 1.40)
+• 今日下载 (RX): 3.80 GB
+• 今日上传 (TX): 1.40 GB
+• 今日合计已用: *5.20 GB* 📅
 • 本月已用 (累计): *165.57 GB* (共 1000 GB)
 • 使用比例: *16%*
 • 计算周期: 每月 22 号重置

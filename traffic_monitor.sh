@@ -204,7 +204,9 @@ _状态良好，监控运行中..._"
                 message="📊 *VPS 流量实时状态* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *监控网卡*: $INTERFACE
-• *今日上传与下载*: ${TODAY_TOTAL_GB} GB (RX: ${TODAY_RX_GB} / TX: ${TODAY_TX_GB})
+• *今日下载 (RX)*: ${TODAY_RX_GB} GB
+• *今日上传 (TX)*: ${TODAY_TX_GB} GB
+• *今日合计已用*: *${TODAY_TOTAL_GB} GB* 📅
 • *本月已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
 • *使用比例*: *${USED_PERCENT}%*
 • *计算周期*: 每月 ${RESET_DAY} 号重置"
@@ -253,7 +255,9 @@ _Status is good, monitoring active..._"
                 message="📊 *VPS Real-time Traffic Status* ($VPS_NAME)
 ━━━━━━━━━━━━━━━━━━
 • *Interface*: $INTERFACE
-• *Today Traffic*: ${TODAY_TOTAL_GB} GB (RX: ${TODAY_RX_GB} / TX: ${TODAY_TX_GB})
+• *Today Download (RX)*: ${TODAY_RX_GB} GB
+• *Today Upload (TX)*: ${TODAY_TX_GB} GB
+• *Today Total Used*: *${TODAY_TOTAL_GB} GB* 📅
 • *Month Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
 • *Usage Ratio*: *${USED_PERCENT}%*
 • *Billing Cycle*: Monthly day ${RESET_DAY}"
