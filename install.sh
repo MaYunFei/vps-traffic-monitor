@@ -607,7 +607,7 @@ if [ "$MONITOR_LANG" = "zh" ]; then
     echo -e "• 账单重置周期:  每月 ${YELLOW}${RESET_DAY}${PLAIN} 号 (通过 vnstat)"
     echo -e "• 每日例行总结:  ${YELLOW}${DAILY_REPORT}${PLAIN}"
     if [ "$DAILY_REPORT" = "true" ]; then
-        echo -e "  └─ 定时发送小时: 每早 ${YELLOW}${DAILY_REPORT_HOUR}:00${PLAIN}"
+        echo -e "  └─ 定时发送小时: 每天 ${YELLOW}${DAILY_REPORT_HOUR}:00${PLAIN}"
     fi
     echo -e "• 主动指令查询:  ${YELLOW}${ENABLE_LISTENER}${PLAIN} (向 Bot 发送 /traffic 触发)"
     echo -e "• TG Token:      ${YELLOW}${TG_TOKEN:-(未配置)}${PLAIN}"
@@ -629,7 +629,7 @@ else
     echo -e "• Billing Reset:    Monthly Day ${YELLOW}${RESET_DAY}${PLAIN} (via vnstat)"
     echo -e "• Daily Report:     ${YELLOW}${DAILY_REPORT}${PLAIN}"
     if [ "$DAILY_REPORT" = "true" ]; then
-        echo -e "  └─ Report Hour:   ${YELLOW}${DAILY_REPORT_HOUR}:00${PLAIN}"
+        echo -e "  └─ Daily Report Hour: ${YELLOW}${DAILY_REPORT_HOUR}:00${PLAIN}"
     fi
     echo -e "• Active Command:   ${YELLOW}${ENABLE_LISTENER}${PLAIN} (Send /traffic to your Bot)"
     echo -e "• TG Token:         ${YELLOW}${TG_TOKEN:-(Not Configured)}${PLAIN}"
