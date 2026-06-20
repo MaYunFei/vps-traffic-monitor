@@ -326,7 +326,7 @@ if [ "$REBUILD_CONFIG" = "true" ]; then
         read -p "Enter already-used traffic this month [Default: $DEFAULT_INITIAL_USED]: " INITIAL_USED_GB
     fi
     INITIAL_USED_GB=${INITIAL_USED_GB:-$DEFAULT_INITIAL_USED}
-    if ! [[ "$INITIAL_USED_GB" =~ ^[0-9]+$ ]]; then
+    if ! [[ "$INITIAL_USED_GB" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
         INITIAL_USED_GB=$DEFAULT_INITIAL_USED
     fi
 
@@ -461,8 +461,14 @@ TELEGRAM_CHAT_ID="${TG_CHAT}"
 LIMIT_GB=${LIMIT_GB}
 
 # Already used traffic this billing cycle before installing monitor (GB).
-# One-time offset — auto-resets to 0 after first run.
+# Inputted by user during installation, utilized on first run to compute INITIAL_OFFSET_GB.
 INITIAL_USED_GB=${INITIAL_USED_GB}
+
+# Internal auto-calculated offset (GB) to compensate for pre-installation usage.
+INITIAL_OFFSET_GB=0.00
+
+# The billing month when the initial offset was recorded (Format: YYYY-MM).
+INITIAL_OFFSET_MONTH=""
 
 # Network interface to monitor. If left empty, the script will auto-detect the default interface.
 INTERFACE=""

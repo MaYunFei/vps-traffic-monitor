@@ -21,6 +21,8 @@ VPS_NAME=${VPS_NAME:-$(hostname)}
 DAILY_REPORT=${DAILY_REPORT:-false}
 DAILY_REPORT_HOUR=${DAILY_REPORT_HOUR:-21}
 INITIAL_USED_GB=${INITIAL_USED_GB:-0}
+INITIAL_OFFSET_GB=${INITIAL_OFFSET_GB:-0.00}
+INITIAL_OFFSET_MONTH=${INITIAL_OFFSET_MONTH:-""}
 
 # Auto-detect interface if empty
 if [ -z "$INTERFACE" ]; then
@@ -74,6 +76,8 @@ fi
 # Parsing json via jq
 RX=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].rx' 2>/dev/null)
 TX=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].tx' 2>/dev/null)
+YEAR_VAL=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].date.year' 2>/dev/null)
+MONTH_VAL=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].date.month' 2>/dev/null)
 
 # Fallback values if stats are not ready yet
 if [ "$RX" = "null" ] || [ -z "$RX" ]; then
@@ -83,15 +87,48 @@ if [ "$TX" = "null" ] || [ -z "$TX" ]; then
     TX=0
 fi
 
-TOTAL_BYTES=$((RX + TX))
-# Calculate usage (Floating point emulation using bc)
-USED_GB=$(echo "scale=2; $TOTAL_BYTES / 1073741824 + $INITIAL_USED_GB" | bc | awk '{printf "%.2f", $0}')
-USED_PERCENT=$(echo "scale=0; ($TOTAL_BYTES + $INITIAL_USED_GB * 1073741824) * 100 / ($LIMIT_GB * 1073741824)" | bc)
-
-# Auto-reset one-time initial offset after first use
-if [ "$INITIAL_USED_GB" != "0" ]; then
-    sed -i "s/^INITIAL_USED_GB=.*/INITIAL_USED_GB=0/" "$CONFIG_FILE"
+if [ "$YEAR_VAL" = "null" ] || [ -z "$YEAR_VAL" ] || [ "$MONTH_VAL" = "null" ] || [ -z "$MONTH_VAL" ]; then
+    CURRENT_BILL_MONTH=$(date '+%Y-%m')
+else
+    CURRENT_BILL_MONTH=$(printf "%04d-%02d" "$YEAR_VAL" "$MONTH_VAL")
 fi
+
+TOTAL_BYTES=$((RX + TX))
+VNSTAT_USED_GB=$(echo "scale=4; $TOTAL_BYTES / 1073741824" | bc)
+
+# 1. Check if we need to auto-calculate the initial offset
+if [ -n "$INITIAL_USED_GB" ] && [ "$(echo "$INITIAL_USED_GB > 0" | bc)" -eq 1 ]; then
+    # Calculate offset: user-provided total minus what vnstat already has recorded
+    DIFF_OFFSET=$(echo "scale=4; $INITIAL_USED_GB - $VNSTAT_USED_GB" | bc)
+    # Ensure offset is not negative
+    if [ "$(echo "$DIFF_OFFSET < 0" | bc)" -eq 1 ]; then
+        DIFF_OFFSET="0.00"
+    fi
+    # Format offset
+    INITIAL_OFFSET_GB=$(printf "%.2f" "$DIFF_OFFSET")
+    INITIAL_OFFSET_MONTH="$CURRENT_BILL_MONTH"
+
+    # Save computed offset and reset the user input variable inside config.env
+    sed -i "s/^INITIAL_USED_GB=.*/INITIAL_USED_GB=0/" "$CONFIG_FILE"
+    sed -i "s/^INITIAL_OFFSET_GB=.*/INITIAL_OFFSET_GB=${INITIAL_OFFSET_GB}/" "$CONFIG_FILE"
+    sed -i "s/^INITIAL_OFFSET_MONTH=.*/INITIAL_OFFSET_MONTH=\"${INITIAL_OFFSET_MONTH}\"/" "$CONFIG_FILE"
+fi
+
+# 2. Check if a new billing month has arrived to clear offset
+if [ -n "$INITIAL_OFFSET_MONTH" ] && [ "$INITIAL_OFFSET_MONTH" != "$CURRENT_BILL_MONTH" ]; then
+    INITIAL_OFFSET_GB="0.00"
+    INITIAL_OFFSET_MONTH=""
+    # Reset offsets in config.env block
+    sed -i "s/^INITIAL_OFFSET_GB=.*/INITIAL_OFFSET_GB=0.00/" "$CONFIG_FILE"
+    sed -i "s/^INITIAL_OFFSET_MONTH=.*/INITIAL_OFFSET_MONTH=\"\"/" "$CONFIG_FILE"
+fi
+
+# Calculate total usage including offset
+USED_GB=$(echo "scale=2; $VNSTAT_USED_GB + $INITIAL_OFFSET_GB" | bc | awk '{printf "%.2f", $0}')
+
+# Emulate USED_PERCENT calculating on total bytes equivalent
+TOTAL_BYTES_OFFSET_EMULATED=$(echo "scale=0; ($TOTAL_BYTES + $INITIAL_OFFSET_GB * 1073741824) / 1" | bc)
+USED_PERCENT=$(echo "scale=0; $TOTAL_BYTES_OFFSET_EMULATED * 100 / ($LIMIT_GB * 1073741824)" | bc)
 
 # Format values for readable output in TG
 RX_GB=$(echo "scale=2; $RX / 1073741824" | bc | awk '{printf "%.2f", $0}')
