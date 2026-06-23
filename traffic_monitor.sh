@@ -40,6 +40,7 @@ fi
 # State files
 ALERT_STATE_FILE="${STATE_DIR}/vps_traffic_alert_${INTERFACE}.state"
 DAILY_STATE_FILE="${STATE_DIR}/vps_traffic_daily_${INTERFACE}.state"
+MONTH_STATE_FILE="${STATE_DIR}/vps_traffic_month_${INTERFACE}.state"
 
 # Read Reset Day from vnstat.conf if available
 RESET_DAY=$(grep -E "^MonthRotate" /etc/vnstat.conf 2>/dev/null | awk '{print $2}')
@@ -213,7 +214,7 @@ _流量消耗已达到设定等级，请及时调整使用策略。_"
 • *网卡名称*: $INTERFACE
 • *新周期已用*: ${USED_GB} GB
 • *使用比例*: ${USED_PERCENT}%
-• *账单重置*: 已于每月 ${RESET_DAY} 号完成重置 ♻️"
+• *结算账期*: 已完成每月 ${RESET_DAY} 号重置 ♻️"
                 ;;
             daily)
                 local remaining_gb=$(echo "scale=2; $LIMIT_GB - $USED_GB" | bc | awk '{printf "%.2f", $0}')
@@ -222,7 +223,7 @@ _流量消耗已达到设定等级，请及时调整使用策略。_"
 • *监控网卡*: $INTERFACE
 • *今日下载 (RX)*: ${TODAY_RX_GB} GB
 • *今日上传 (TX)*: ${TODAY_TX_GB} GB
-• *今日合计已用*: *${TODAY_TOTAL_GB} GB* 📅
+• *今日合计已用*: *${TODAY_TOTAL_GB} GB*
 • *本期已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
 • *本期剩余流量*: ${remaining_gb} GB
 • *使用比例*: *${USED_PERCENT}%*
@@ -236,7 +237,7 @@ _状态良好，监控运行中..._"
 • *监控网卡*: $INTERFACE
 • *今日下载 (RX)*: ${TODAY_RX_GB} GB
 • *今日上传 (TX)*: ${TODAY_TX_GB} GB
-• *今日合计已用*: *${TODAY_TOTAL_GB} GB* 📅
+• *今日合计已用*: *${TODAY_TOTAL_GB} GB*
 • *本期已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
 • *使用比例*: *${USED_PERCENT}%*
 • *结算账期*: 每月 ${RESET_DAY} 号重置"
@@ -273,9 +274,9 @@ _Traffic consumption has reached the threshold. Adjust usage accordingly._"
 • *Interface*: $INTERFACE
 • *Today Download (RX)*: ${TODAY_RX_GB} GB
 • *Today Upload (TX)*: ${TODAY_TX_GB} GB
-• *Today Total Used*: *${TODAY_TOTAL_GB} GB* 📅
-• *Month Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
-• *Month Remaining*: ${remaining_gb} GB
+• *Today Total Used*: *${TODAY_TOTAL_GB} GB*
+• *Cycle Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
+• *Cycle Remaining*: ${remaining_gb} GB
 • *Usage Ratio*: *${USED_PERCENT}%*
 • *Billing Cycle*: Monthly day ${RESET_DAY}
 
@@ -287,8 +288,8 @@ _Status is good, monitoring active..._"
 • *Interface*: $INTERFACE
 • *Today Download (RX)*: ${TODAY_RX_GB} GB
 • *Today Upload (TX)*: ${TODAY_TX_GB} GB
-• *Today Total Used*: *${TODAY_TOTAL_GB} GB* 📅
-• *Month Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
+• *Today Total Used*: *${TODAY_TOTAL_GB} GB*
+• *Cycle Total Used*: *${USED_GB} GB* (of ${LIMIT_GB} GB)
 • *Usage Ratio*: *${USED_PERCENT}%*
 • *Billing Cycle*: Monthly day ${RESET_DAY}"
                 ;;
@@ -358,16 +359,24 @@ if [ "$CURRENT_STAGE" -gt "$LAST_STAGE" ]; then
     send_tg_notification "$MESSAGE"
 fi
 
-# Reset state when usage drops below the alert thresholds (e.g., billing cycle resets)
-if [ "$CURRENT_STAGE" -lt "$LAST_STAGE" ] || [ "$USED_PERCENT" -lt "$ALERT_THRESHOLD" ]; then
-    if [ "$LAST_STAGE" -gt 0 ] && [ "$USED_PERCENT" -lt "$ALERT_THRESHOLD" ]; then
-        RESET_MESSAGE=$(generate_message "reset")
-        send_tg_notification "$RESET_MESSAGE"
-    fi
+# Try to load last billing month recorded to detect billing cycle transitions
+LAST_BILL_MONTH=""
+if [ -f "$MONTH_STATE_FILE" ]; then
+    LAST_BILL_MONTH=$(cat "$MONTH_STATE_FILE")
 fi
 
-# Persist the current stage
+# Reset state when a new billing cycle month transition is detected
+if [ -n "$LAST_BILL_MONTH" ] && [ "$LAST_BILL_MONTH" != "$CURRENT_BILL_MONTH" ]; then
+    RESET_MESSAGE=$(generate_message "reset")
+    send_tg_notification "$RESET_MESSAGE"
+
+    # Reset alert level status to prevent carrying over old stage thresholds
+    CURRENT_STAGE=0
+fi
+
+# Persist state parameters
 echo "$CURRENT_STAGE" > "$ALERT_STATE_FILE"
+echo "$CURRENT_BILL_MONTH" > "$MONTH_STATE_FILE"
 
 # Daily Report Summary Logic
 if [ "$DAILY_REPORT" = "true" ]; then

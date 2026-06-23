@@ -100,17 +100,25 @@ fi
 
 # 4. Clean physical files
 if [ "$MONITOR_LANG" = "zh" ]; then
-    echo -e "\n${YELLOW}步骤 4: 正在彻底删除绝对路径安装目录 $INSTALL_DIR...${PLAIN}"
+    echo -e "\n${YELLOW}步骤 4: 正在彻底删除绝对路径安装目录及流量状态文件...${PLAIN}"
 else
-    echo -e "\n${YELLOW}Step 4: Deleting installed files in $INSTALL_DIR...${PLAIN}"
+    echo -e "\n${YELLOW}Step 4: Deleting installed files and traffic state files...${PLAIN}"
+fi
+
+# Clean state tracking files
+STATE_DIR=${STATE_DIR:-"/tmp"}
+if [ -n "$INTERFACE" ]; then
+    rm -f "${STATE_DIR}/vps_traffic_alert_${INTERFACE}.state" 2>/dev/null
+    rm -f "${STATE_DIR}/vps_traffic_daily_${INTERFACE}.state" 2>/dev/null
+    rm -f "${STATE_DIR}/vps_traffic_month_${INTERFACE}.state" 2>/dev/null
 fi
 
 if [ -d "$INSTALL_DIR" ]; then
     rm -rf "$INSTALL_DIR"
     if [ "$MONITOR_LANG" = "zh" ]; then
-        echo -e "${GREEN}安装物理路径彻底清除完成。${PLAIN}"
+        echo -e "${GREEN}物理路径及流量状态文件彻底清除完成。${PLAIN}"
     else
-        echo -e "${GREEN}Installation directory deleted.${PLAIN}"
+        echo -e "${GREEN}Installation directory and logic state files deleted.${PLAIN}"
     fi
 else
     if [ "$MONITOR_LANG" = "zh" ]; then
