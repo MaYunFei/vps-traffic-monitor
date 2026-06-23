@@ -73,11 +73,41 @@ if [ -z "$VNSTAT_JSON" ]; then
     exit 1
 fi
 
-# Parsing json via jq
-RX=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].rx' 2>/dev/null)
-TX=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].tx' 2>/dev/null)
-YEAR_VAL=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].date.year' 2>/dev/null)
-MONTH_VAL=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[0].date.month' 2>/dev/null)
+# Parsing json via jq to dynamically determine current billing cycle
+TODAY_YEAR=$(date '+%Y')
+TODAY_MONTH=$(date '+%m')
+TODAY_DAY=$(date '+%d')
+
+TODAY_YEAR_INT=$((10#$TODAY_YEAR))
+TODAY_MONTH_INT=$((10#$TODAY_MONTH))
+TODAY_DAY_INT=$((10#$TODAY_DAY))
+RESET_DAY_INT=$((10#$RESET_DAY))
+
+if [ "$TODAY_DAY_INT" -ge "$RESET_DAY_INT" ]; then
+    BILL_YEAR=$TODAY_YEAR_INT
+    BILL_MONTH=$TODAY_MONTH_INT
+else
+    BILL_MONTH=$((TODAY_MONTH_INT - 1))
+    BILL_YEAR=$TODAY_YEAR_INT
+    if [ "$BILL_MONTH" -eq 0 ]; then
+        BILL_MONTH=12
+        BILL_YEAR=$((TODAY_YEAR_INT - 1))
+    fi
+fi
+
+# Try to find target month data
+MONTH_DATA=$(echo "$VNSTAT_JSON" | jq --argjson y "$BILL_YEAR" --argjson m "$BILL_MONTH" \
+  '.interfaces[0].traffic.month[] | select(.date.year == $y and .date.month == $m)' 2>/dev/null)
+
+if [ -z "$MONTH_DATA" ] || [ "$MONTH_DATA" = "null" ]; then
+    # Fallback to the latest month entry in the list
+    MONTH_DATA=$(echo "$VNSTAT_JSON" | jq '.interfaces[0].traffic.month[-1]' 2>/dev/null)
+fi
+
+RX=$(echo "$MONTH_DATA" | jq '.rx' 2>/dev/null)
+TX=$(echo "$MONTH_DATA" | jq '.tx' 2>/dev/null)
+YEAR_VAL=$(echo "$MONTH_DATA" | jq '.date.year' 2>/dev/null)
+MONTH_VAL=$(echo "$MONTH_DATA" | jq '.date.month' 2>/dev/null)
 
 # Fallback values if stats are not ready yet
 if [ "$RX" = "null" ] || [ -z "$RX" ]; then
@@ -193,10 +223,10 @@ _流量消耗已达到设定等级，请及时调整使用策略。_"
 • *今日下载 (RX)*: ${TODAY_RX_GB} GB
 • *今日上传 (TX)*: ${TODAY_TX_GB} GB
 • *今日合计已用*: *${TODAY_TOTAL_GB} GB* 📅
-• *本月已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
-• *本月剩余流量*: ${remaining_gb} GB
+• *本期已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
+• *本期剩余流量*: ${remaining_gb} GB
 • *使用比例*: *${USED_PERCENT}%*
-• *计算周期*: 每月 ${RESET_DAY} 号重置
+• *结算账期*: 每月 ${RESET_DAY} 号重置
 
 _状态良好，监控运行中..._"
                 ;;
@@ -207,9 +237,9 @@ _状态良好，监控运行中..._"
 • *今日下载 (RX)*: ${TODAY_RX_GB} GB
 • *今日上传 (TX)*: ${TODAY_TX_GB} GB
 • *今日合计已用*: *${TODAY_TOTAL_GB} GB* 📅
-• *本月已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
+• *本期已用 (累计)*: *${USED_GB} GB* (共 ${LIMIT_GB} GB)
 • *使用比例*: *${USED_PERCENT}%*
-• *计算周期*: 每月 ${RESET_DAY} 号重置"
+• *结算账期*: 每月 ${RESET_DAY} 号重置"
                 ;;
         esac
     else
