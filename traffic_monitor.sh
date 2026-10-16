@@ -63,6 +63,12 @@ send_tg_notification() {
     fi
 }
 
+# Ensure vnstat daemon is active, self-heal if stopped
+if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet vnstat; then
+    systemctl restart vnstat 2>/dev/null || true
+    sleep 1
+fi
+
 # Fetch vnstat monthly data (JSON mode)
 VNSTAT_JSON=$(vnstat --json -i "$INTERFACE" 2>/dev/null)
 if [ -z "$VNSTAT_JSON" ]; then
